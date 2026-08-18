@@ -1,0 +1,42 @@
+{
+  "name": "ant2api",
+  "version": "1.0.0",
+  "description": "High-performance gateway converting GeminiCLI and Antigravity into OpenAI, Claude, and Gemini API compatible endpoints with Web Management Dashboard and Linux deployment support.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && npm run copy-web",
+    "copy-web": "node -e \"const fs=require('fs'); fs.cpSync('src/web', 'dist/web', {recursive:true});\"",
+    "start": "node dist/index.js",
+    "lint": "tsc --noEmit"
+  },
+  "keywords": [
+    "antigravity",
+    "gemini-cli",
+    "openai-api",
+    "claude-api",
+    "gemini-api",
+    "ai-gateway",
+    "llm-proxy"
+  ],
+  "author": "Ant2api Team",
+  "license": "MIT",
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "undici": "^6.28.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.9",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

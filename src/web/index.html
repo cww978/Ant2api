@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ant2api - Antigravity & GeminiCLI to Universal AI API Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal-overlay">
+      <div class="glass-card login-box">
+        <div class="brand-header">
+          <div class="brand-logo">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <h2>Ant2api 管理控制台</h2>
+          <p class="subtitle">Antigravity & GeminiCLI 转 OpenAI / Claude / Gemini 网关</p>
+        </div>
+        <form id="login-form">
+          <div class="form-group">
+            <label for="admin-password">管理员访问密钥</label>
+            <input type="password" id="admin-password" placeholder="请输入 ADMIN_PASSWORD" required autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">进入系统</button>
+        </form>
+        <div id="login-error" class="error-msg hidden"></div>
+      </div>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="main-layout" class="layout hidden">
+      <!-- Sidebar Navigation -->
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <div class="logo-icon">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div class="logo-text">
+            <span class="title">Ant2api</span>
+            <span class="version-tag">v1.0</span>
+          </div>
+        </div>
+
+        <nav class="nav-menu">
+          <button class="nav-item active" data-tab="dashboard">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            <span>仪表盘概览</span>
+          </button>
+          <button class="nav-item" data-tab="accounts">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>账号与凭证池</span>
+          </button>
+          <button class="nav-item" data-tab="keys">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-1.5 1.5L16 7l-1.5-1.5M19 5l-2.5 2.5m-3-3L11 7l-1.5-1.5M15 9l-7 7H4v-4l7-7m4 4l-2.5 2.5"/></svg>
+            <span>API 密钥管理</span>
+          </button>
+          <button class="nav-item" data-tab="mappings">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/></svg>
+            <span>模型别名映射</span>
+          </button>
+          <button class="nav-item" data-tab="playground">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>在线演练场</span>
+          </button>
+          <button class="nav-item" data-tab="logs">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            <span>请求审计日志</span>
+          </button>
+          <button class="nav-item" data-tab="deploy">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+            <span>Linux 部署与设置</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span>服务在线 (Port: <span id="server-port">8080</span>)</span>
+          </div>
+          <button id="btn-logout" class="btn btn-ghost btn-sm">退出登录</button>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="main-content">
+        <!-- Top Navigation Bar -->
+        <header class="top-bar">
+          <div class="page-title-wrap">
+            <h1 id="page-heading">仪表盘概览</h1>
+            <p id="page-subheading" class="text-muted">实时流量监控与核心健康指标</p>
+          </div>
+          <div class="top-actions">
+            <button id="btn-refresh-stats" class="btn btn-outline btn-sm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              <span>刷新数据</span>
+            </button>
+            <a href="https://github.com" target="_blank" class="btn btn-ghost btn-sm doc-link">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>帮助文档</span>
+            </a>
+          </div>
+        </header>
+
+        <!-- Tab 1: Dashboard -->
+        <section id="tab-dashboard" class="tab-pane active">
+          <!-- Metric Cards -->
+          <div class="stats-grid">
+            <div class="glass-card stat-card">
+              <div class="stat-header">
+                <span class="stat-title">总请求次数</span>
+                <span class="stat-icon icon-cyan">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                </span>
+              </div>
+              <div class="stat-value" id="stat-total-requests">0</div>
+              <div class="stat-desc">今日请求流量汇总</div>
+            </div>
+
+            <div class="glass-card stat-card">
+              <div class="stat-header">
+                <span class="stat-title">消耗总 Token</span>
+                <span class="stat-icon icon-purple">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                </span>
+              </div>
+              <div class="stat-value" id="stat-total-tokens">0</div>
+              <div class="stat-desc">包含输入与输出 Token</div>
+            </div>
+
+            <div class="glass-card stat-card">
+              <div class="stat-header">
+                <span class="stat-title">请求成功率</span>
+                <span class="stat-icon icon-emerald">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </span>
+              </div>
+              <div class="stat-value" id="stat-success-rate">100%</div>
+              <div class="stat-desc">错误率: <span id="stat-total-errors">0</span> 次</div>
+            </div>
+
+            <div class="glass-card stat-card">
+              <div class="stat-header">
+                <span class="stat-title">平均响应耗时</span>
+                <span class="stat-icon icon-amber">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </span>
+              </div>
+              <div class="stat-value"><span id="stat-avg-latency">0</span> <small>ms</small></div>
+              <div class="stat-desc">上游与流式综合耗时</div>
+            </div>
+          </div>
+
+          <!-- Traffic Chart Section -->
+          <div class="content-row">
+            <div class="glass-card flex-1">
+              <div class="card-title-bar">
+                <h3>24小时请求量趋势</h3>
+                <span class="badge badge-primary">实时</span>
+              </div>
+              <div class="chart-container" id="traffic-chart-box">
+                <div class="chart-bars" id="traffic-bars"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Multi-Protocol Support Card (Multi-Protocol Support) -->
+          <div class="glass-card protocol-support-card">
+            <div class="protocol-header">
+              <div class="protocol-icon-wrap">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="16 18 22 12 16 6"></polyline>
+                  <polyline points="8 6 2 12 8 18"></polyline>
+                </svg>
+              </div>
+              <div class="protocol-title-wrap">
+                <div class="protocol-main-title">
+                  <span class="link-emoji">🔗</span>
+                  <h2>多协议支持 (Multi-Protocol Support)</h2>
+                </div>
+                <p class="protocol-sub-title">快速同步 API 地址与密钥到本地 AI 工具</p>
+              </div>
+            </div>
+            
+            <p class="protocol-desc">反代服务支持 OpenAI、Anthropic 和 Gemini 协议，满足不同工具的集成需求</p>
+
+            <div class="protocol-grid">
+              <!-- Column 1: OpenAI Protocol -->
+              <div class="protocol-col protocol-openai">
+                <div class="protocol-col-header">
+                  <span class="protocol-tag tag-openai">OpenAI 协议</span>
+                  <button class="btn-copy-base" onclick="copyProtocolUrl('/v1', 'OpenAI Base URL')" title="复制 Base URL">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    <span>复制 BASE</span>
+                  </button>
+                </div>
+                <div class="protocol-endpoints-list">
+                  <div class="protocol-ep-pill" onclick="copyProtocolUrl('/v1/chat/completions', 'Chat Endpoint')">
+                    <code>/v1/chat/completions</code>
+                    <button class="pill-copy-btn" title="复制完整路径">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </div>
+                  <div class="protocol-ep-pill" onclick="copyProtocolUrl('/v1/completions', 'Completions Endpoint')">
+                    <code>/v1/completions</code>
+                    <button class="pill-copy-btn" title="复制完整路径">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </div>
+                  <div class="protocol-ep-pill ep-pill-highlight" onclick="copyProtocolUrl('/v1/responses', 'Codex Responses Endpoint')">
+                    <code>/v1/responses (Codex)</code>
+                    <button class="pill-copy-btn" title="复制完整路径">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Column 2: Anthropic Protocol -->
+              <div class="protocol-col protocol-anthropic">
+                <div class="protocol-col-header">
+                  <span class="protocol-tag tag-anthropic">Anthropic 协议</span>
+                  <button class="btn-copy-icon" onclick="copyProtocolUrl('/v1/messages', 'Anthropic Messages URL')" title="复制路径">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  </button>
+                </div>
+                <div class="protocol-endpoints-list">
+                  <div class="protocol-ep-pill" onclick="copyProtocolUrl('/v1/messages', 'Messages Endpoint')">
+                    <code>/v1/messages</code>
+                    <button class="pill-copy-btn" title="复制完整路径">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Column 3: Gemini Protocol -->
+              <div class="protocol-col protocol-gemini">
+                <div class="protocol-col-header">
+                  <span class="protocol-tag tag-gemini">Gemini 协议</span>
+                  <button class="btn-copy-icon" onclick="copyProtocolUrl('/v1beta', 'Gemini Base URL')" title="复制路径">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  </button>
+                </div>
+                <div class="protocol-endpoints-list">
+                  <div class="protocol-ep-pill" onclick="copyProtocolUrl('/v1beta/models/...', 'Gemini Models Endpoint')">
+                    <code>/v1beta/models/...</code>
+                    <button class="pill-copy-btn" title="复制完整路径">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Accounts -->
+        <section id="tab-accounts" class="tab-pane">
+          <div class="action-bar">
+            <div class="search-wrap">
+              <input type="text" id="account-search" placeholder="搜索账号名称、类型..." class="input-search">
+            </div>
+            <div class="btn-group">
+              <button id="btn-open-oauth-helper" class="btn btn-outline">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+                <span>OAuth 授权助手</span>
+              </button>
+              <button id="btn-add-account" class="btn btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>添加账号凭据</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="glass-card table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>账号名称</th>
+                  <th>提供者类型</th>
+                  <th>认证状态</th>
+                  <th>总调用 / 失败</th>
+                  <th>连续错误</th>
+                  <th>最后使用时间</th>
+                  <th class="text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="accounts-tbody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 3: API Keys -->
+        <section id="tab-keys" class="tab-pane">
+          <div class="action-bar">
+            <div class="search-wrap">
+              <input type="text" id="key-search" placeholder="搜索密钥名称或前缀..." class="input-search">
+            </div>
+            <button id="btn-add-key" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>生成新 API Key</span>
+            </button>
+          </div>
+
+          <div class="glass-card table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>名称 / 备注</th>
+                  <th>API Key 令牌</th>
+                  <th>速率限制 (RPM)</th>
+                  <th>已用 Token / 配额</th>
+                  <th>创建时间</th>
+                  <th>状态</th>
+                  <th class="text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="keys-tbody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 4: Model Mappings -->
+        <section id="tab-mappings" class="tab-pane">
+          <div class="action-bar">
+            <p class="text-muted">配置客户端请求的模型名与上游实际调用模型的重定向关系（支持通配或别名）</p>
+            <button id="btn-add-mapping" class="btn btn-primary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <span>添加映射规则</span>
+            </button>
+          </div>
+
+          <div class="glass-card table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>源模型别名 (客户端传入)</th>
+                  <th>重定向目标模型 (上游调用)</th>
+                  <th>描述说明</th>
+                  <th>启用状态</th>
+                  <th class="text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody id="mappings-tbody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 5: Playground -->
+        <section id="tab-playground" class="tab-pane">
+          <div class="playground-layout">
+            <!-- Playground Controls Sidebar -->
+            <div class="glass-card playground-sidebar">
+              <h3>测试配置</h3>
+              <div class="form-group">
+                <label>协议格式</label>
+                <div class="tab-pills" id="pg-protocol-tabs">
+                  <button class="pill active" data-protocol="openai">OpenAI</button>
+                  <button class="pill" data-protocol="claude">Claude</button>
+                  <button class="pill" data-protocol="gemini">Gemini</button>
+                  <button class="pill" data-protocol="codex">Codex (FIM)</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label>测试模型</label>
+                <select id="pg-model-select" class="form-select">
+                  <option value="gpt-4o">gpt-4o (映射到 gemini-3.7-flash)</option>
+                  <option value="claude-3-7-sonnet">claude-3-7-sonnet (映射到 gemini-3.7-flash)</option>
+                  <option value="gemini-3.7-flash">gemini-3.7-flash (Gemini 3.7 Flash High)</option>
+                  <option value="gemini-3.6-flash">gemini-3.6-flash (Gemini 3.6 Flash Medium)</option>
+                  <option value="gemini-3.5-flash">gemini-3.5-flash (Gemini 3.5 Flash Medium)</option>
+                  <option value="gemini-3.1-pro">gemini-3.1-pro (Gemini 3.1 Pro Low)</option>
+                  <option value="gemini-3.7-thinking">gemini-3.7-thinking (Gemini 3.7 Thinking)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>流式输出 (SSE Stream)</label>
+                <label class="switch">
+                  <input type="checkbox" id="pg-stream" checked>
+                  <span class="slider"></span>
+                </label>
+              </div>
+              <div class="form-group">
+                <label>Temperature (温度: <span id="pg-temp-val">0.7</span>)</label>
+                <input type="range" id="pg-temp" min="0" max="2" step="0.1" value="0.7">
+              </div>
+              <div class="form-group">
+                <label>系统提示词 (System Prompt)</label>
+                <textarea id="pg-system" rows="3" placeholder="例如: 你是一个资深人工智能工程师..."></textarea>
+              </div>
+              <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 0.75rem; color: #cbd5e1; line-height: 1.5;">
+                💡 <strong>温馨提示</strong>：调用 Gemini 模型需在「账号凭证池」填入免费生成的 <a href="https://aistudio.google.com/apikey" target="_blank" style="color: #818cf8; text-decoration: underline;">Google AI Studio API Key ↗</a>。
+              </div>
+            </div>
+
+            <!-- Playground Chat Window -->
+            <div class="glass-card playground-chatbox">
+              <div class="chat-header">
+                <span class="chat-status">状态: <strong id="pg-chat-status">空闲</strong></span>
+                <span class="chat-stats" id="pg-chat-metrics">耗时: 0ms | Tokens: 0</span>
+              </div>
+              <div class="chat-messages" id="pg-chat-messages">
+                <div class="chat-msg assistant">
+                  <div class="msg-avatar">🤖</div>
+                  <div class="msg-body">
+                    <p>你好！我是 Ant2api 网关。你可以在这里测试将 GeminiCLI 或 Antigravity 转换为 OpenAI / Claude / Gemini API 的实际效果！</p>
+                  </div>
+                </div>
+              </div>
+              <div class="chat-input-area">
+                <textarea id="pg-user-input" placeholder="输入测试消息，按 Enter 发送，Shift+Enter 换行..." rows="2"></textarea>
+                <button id="btn-pg-send" class="btn btn-primary">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                  <span>发送</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 6: Logs -->
+        <section id="tab-logs" class="tab-pane">
+          <div class="action-bar">
+            <div class="search-wrap">
+              <input type="text" id="log-search" placeholder="筛选模型、错误或客户端 IP..." class="input-search">
+            </div>
+            <div class="btn-group">
+              <button id="btn-clear-logs" class="btn btn-outline btn-danger-hover">清空所有日志</button>
+              <button id="btn-refresh-logs" class="btn btn-primary">刷新日志</button>
+            </div>
+          </div>
+
+          <div class="glass-card table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>时间</th>
+                  <th>协议 / 端点</th>
+                  <th>请求模型 &rarr; 目标模型</th>
+                  <th>状态</th>
+                  <th>耗时</th>
+                  <th>Tokens (入/出/总)</th>
+                  <th>上游账号</th>
+                  <th>客户端 IP</th>
+                </tr>
+              </thead>
+              <tbody id="logs-tbody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 7: Deployment & Settings -->
+        <section id="tab-deploy" class="tab-pane">
+          <div class="settings-grid">
+            <!-- System Settings -->
+            <div class="glass-card">
+              <div class="card-title-bar">
+                <h3>网关运行设置</h3>
+              </div>
+              <form id="settings-form">
+                <div class="form-group">
+                  <label>多账号负载均衡策略</label>
+                  <select id="setting-strategy" class="form-select">
+                    <option value="round_robin">轮询负载均衡 (Round Robin)</option>
+                    <option value="least_errors">最少错误优先 (Least Errors)</option>
+                    <option value="random">随机分发 (Random)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label>账号速率限制 (429) 自动冷却时间 (秒)</label>
+                  <input type="number" id="setting-cooldown" min="5" max="3600" value="60">
+                </div>
+                <div class="form-group">
+                  <label>出站网络代理 (HTTP/HTTPS Proxy)</label>
+                  <input type="text" id="setting-proxy" placeholder="例如: http://127.0.0.1:7890">
+                </div>
+                <button type="submit" class="btn btn-primary">保存设置</button>
+              </form>
+            </div>
+
+            <!-- Backup & Export -->
+            <div class="glass-card">
+              <div class="card-title-bar">
+                <h3>数据备份与迁移</h3>
+              </div>
+              <p class="text-muted">导出所有账号、API Key 和映射规则为 JSON 文件，或导入到新实例。</p>
+              <div class="btn-group mt-3">
+                <button id="btn-export-backup" class="btn btn-outline">导出配置备份 (JSON)</button>
+                <button id="btn-trigger-import" class="btn btn-outline">导入配置文件</button>
+                <input type="file" id="file-import" accept=".json" class="hidden">
+              </div>
+            </div>
+          </div>
+
+          <!-- Linux Deployment Guides -->
+          <div class="glass-card mt-4">
+            <div class="card-title-bar">
+              <h3>Linux 服务端部署指南</h3>
+              <span class="badge badge-emerald">生产就绪</span>
+            </div>
+            <div class="deploy-docs">
+              <h4>方法一：Docker 一键部署 (推荐)</h4>
+              <pre><code># 1. 克隆代码或下载项目
+git clone https://github.com/your-repo/Ant2api.git
+cd Ant2api
+
+# 2. 启动 Docker Compose
+docker compose up -d
+
+# 3. 访问控制台
+浏览器打开 http://&lt;服务器IP&gt;:8080 (默认密码: ant2api_admin)</code></pre>
+
+              <h4 class="mt-3">方法二：Linux 一键脚本部署 (Ubuntu / Debian / CentOS)</h4>
+              <pre><code>chmod +x deploy/install.sh
+sudo ./deploy/install.sh</code></pre>
+
+              <h4 class="mt-3">方法三：Nginx 反向代理配置 (启用 SSE 流式支持)</h4>
+              <pre><code>location / {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    
+    # 关键：关闭缓存以确保 SSE 流式实时传输
+    proxy_buffering off;
+    proxy_cache off;
+    chunked_transfer_encoding on;
+}</code></pre>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- Add Account Modal -->
+    <div id="modal-account" class="modal-overlay hidden">
+      <div class="glass-card modal-box">
+        <div class="modal-header">
+          <h3 id="modal-account-title">添加账号凭据</h3>
+          <button class="btn-close" onclick="closeModal('modal-account')">&times;</button>
+        </div>
+        <form id="form-account">
+          <input type="hidden" id="acc-id">
+          <div class="form-group">
+            <label>账号名称 / 备注</label>
+            <input type="text" id="acc-name" placeholder="例如: Google Work Account 01" required>
+          </div>
+          <div class="form-group">
+            <label>提供者类型</label>
+            <select id="acc-type" class="form-select">
+              <option value="gemini_api" selected>Google AI Studio API Key (推荐，支持全系列 Gemini 模型)</option>
+              <option value="antigravity">Google Antigravity (Cloud Code / Code Assist)</option>
+              <option value="gemini_cli">Gemini CLI (OAuth / Refresh Token)</option>
+              <option value="google_oauth">Google OAuth2 通用</option>
+            </select>
+          </div>
+          <div class="form-group" id="group-api-key">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <label style="margin:0;">Gemini API Key (推荐直接填入)</label>
+              <a href="https://aistudio.google.com/apikey" target="_blank" style="font-size:0.75rem; color:#818cf8; text-decoration:none;">👉 免费获取 Google API Key ↗</a>
+            </div>
+            <input type="password" id="acc-api-key" placeholder="AIzaSy... (免费生成，支持 gemini-2.5 / 3.7 模型)">
+          </div>
+          <div class="form-group" id="group-refresh-token">
+            <label>Google OAuth2 Refresh Token (可选)</label>
+            <textarea id="acc-refresh-token" rows="2" placeholder="1//04... 或从 OAuth 助手获取"></textarea>
+          </div>
+          <div class="form-group" id="group-cookie">
+            <label>Session Cookie (可选高级)</label>
+            <textarea id="acc-cookie" rows="2" placeholder="__Secure-1PSID=...; __Secure-1PSIDTS=..."></textarea>
+          </div>
+          <div class="form-group" id="group-oauth-client">
+            <label>自定义 OAuth Client ID & Secret (留空使用默认官方客户端)</label>
+            <div class="grid-2">
+              <input type="text" id="acc-client-id" placeholder="Client ID (可选)">
+              <input type="password" id="acc-client-secret" placeholder="Client Secret (可选)">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="acc-enabled" checked>
+              <span>启用此账号进行负载均衡调度</span>
+            </label>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeModal('modal-account')">取消</button>
+            <button type="submit" class="btn btn-primary">保存账号</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- OAuth Helper Modal -->
+    <div id="modal-oauth" class="modal-overlay hidden">
+      <div class="glass-card modal-box">
+        <div class="modal-header">
+          <h3>Google 账号凭据与 OAuth 授权助手</h3>
+          <button class="btn-close" onclick="closeModal('modal-oauth')">&times;</button>
+        </div>
+        <div class="oauth-steps">
+          <div class="step-item">
+            <span class="step-num">1</span>
+            <div class="step-content">
+              <h4>一键 Google 登录并授权 (自动回调)</h4>
+              <p class="text-muted">点击下方按钮在弹窗中完成 Google 登录授权。授权成功后窗口将自动回调并同步 Refresh Token！</p>
+              <button id="btn-oauth-open-url" class="btn btn-primary mt-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                <span>打开 Google 授权登录页面</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="step-item mt-3">
+            <span class="step-num">2</span>
+            <div class="step-content">
+              <h4>备选方案：手动换取 Refresh Token</h4>
+              <p class="text-muted">如果浏览器未自动回调，可将重定向地址栏中的 <code>code=4/0A...</code> 粘贴到此处手动换取：</p>
+              <input type="text" id="oauth-input-code" placeholder="4/0AeanS0..." class="mt-2">
+              <button id="btn-oauth-exchange" class="btn btn-emerald mt-2">
+                <span>手动换取 Token 凭据</span>
+              </button>
+            </div>
+          </div>
+
+          <div id="oauth-result" class="oauth-result hidden mt-3">
+            <h4>🎉 获取成功！已生成 Refresh Token：</h4>
+            <div class="code-copy-box mt-2">
+              <input type="text" id="oauth-result-token" readonly>
+              <button class="btn btn-sm btn-primary" id="btn-apply-token-to-account">一键填入新账号</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add API Key Modal -->
+    <div id="modal-key" class="modal-overlay hidden">
+      <div class="glass-card modal-box">
+        <div class="modal-header">
+          <h3 id="modal-key-title">生成新 API Key</h3>
+          <button class="btn-close" onclick="closeModal('modal-key')">&times;</button>
+        </div>
+        <form id="form-key">
+          <input type="hidden" id="key-id">
+          <div class="form-group">
+            <label>Key 名称 / 关联应用</label>
+            <input type="text" id="key-name" placeholder="例如: NextChat / Cursor IDE / Production" required>
+          </div>
+          <div class="form-group">
+            <label>自定义 Key 令牌 (留空将自动生成 sk-ant2api-...)</label>
+            <input type="text" id="key-token" placeholder="sk-ant2api-...">
+          </div>
+          <div class="form-group">
+            <label>请求速率限制 (每分钟最多请求数，0 为无限制)</label>
+            <input type="number" id="key-rpm" min="0" value="0">
+          </div>
+          <div class="form-group">
+            <label>总 Token 配额上限 (0 为无限制)</label>
+            <input type="number" id="key-quota" min="0" value="0">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeModal('modal-key')">取消</button>
+            <button type="submit" class="btn btn-primary">确定生成</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Add Model Mapping Modal -->
+    <div id="modal-mapping" class="modal-overlay hidden">
+      <div class="glass-card modal-box">
+        <div class="modal-header">
+          <h3>添加模型映射规则</h3>
+          <button class="btn-close" onclick="closeModal('modal-mapping')">&times;</button>
+        </div>
+        <form id="form-mapping">
+          <input type="hidden" id="map-id">
+          <div class="form-group">
+            <label>源模型名称 (客户端请求的模型)</label>
+            <input type="text" id="map-source" placeholder="例如: gpt-4o 或 claude-3-7-sonnet" required>
+          </div>
+          <div class="form-group">
+            <label>重定向目标模型 (上游实际支持的模型)</label>
+            <input type="text" id="map-target" placeholder="例如: gemini-2.5-pro 或 gemini-3.7-flash" required>
+          </div>
+          <div class="form-group">
+            <label>说明备注 (可选)</label>
+            <input type="text" id="map-desc" placeholder="例如: 映射 GPT-4o 到 Gemini 2.5 Pro">
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-ghost" onclick="closeModal('modal-mapping')">取消</button>
+            <button type="submit" class="btn btn-primary">保存映射</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

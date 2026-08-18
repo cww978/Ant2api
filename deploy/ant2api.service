@@ -1,0 +1,21 @@
+[Unit]
+Description=Ant2api Universal AI Gateway Service
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ant2api
+Environment=NODE_ENV=production
+Environment=PORT=8080
+Environment=ADMIN_PASSWORD=ant2api_admin
+Environment=DATA_DIR=/opt/ant2api/data
+ExecStart=/usr/bin/node /opt/ant2api/dist/index.js
+Restart=always
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=ant2api
+
+[Install]
+WantedBy=multi-user.target

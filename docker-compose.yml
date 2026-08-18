@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  ant2api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ant2api:latest
+    container_name: ant2api-gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - HOST=0.0.0.0
+      - ADMIN_PASSWORD=ant2api_admin
+      - JWT_SECRET=ant2api-custom-secret-key-change-this
+      - DATA_DIR=/app/data
+      - DEFAULT_MODEL=gemini-2.5-pro
+      # Optional Outbound Proxy for upstream access
+      # - HTTP_PROXY=http://127.0.0.1:7890
+      # - HTTPS_PROXY=http://127.0.0.1:7890
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
