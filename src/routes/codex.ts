@@ -7,6 +7,7 @@ import { ModelRouterService } from '../services/model-router.js';
 import { StatsLoggerService } from '../services/stats-logger.js';
 import { CodexConverter, CodexCompletionRequest, CodexEditRequest } from '../converters/codex.js';
 import { SseStreamHandler } from '../converters/stream-sse.js';
+import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
 
 const router = Router();
 const accountPool = AccountPoolService.getInstance();
@@ -281,7 +282,9 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
       triedIds.push(account.id);
 
       if (isStream) {
-        let isFirst = true;
+        SseStreamHandler.initSseResponse(res);
+        SseStreamHandler.startCodexResponsesStream(res, reqId, originalModel);
+
         let fullText = '';
         let promptTokens = 0;
         let completionTokens = 0;
@@ -291,12 +294,6 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
         let callIdx = 0;
 
         const geminiRes = await provider.streamGenerate(geminiReq, (chunk) => {
-          if (isFirst) {
-            SseStreamHandler.initSseResponse(res);
-            SseStreamHandler.startCodexResponsesStream(res, reqId, originalModel);
-            isFirst = false;
-          }
-
           const parts = chunk.candidates?.[0]?.content?.parts || [];
           for (const part of parts) {
             if (part.text) {
@@ -312,6 +309,10 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
               if (!seenFunctionCalls.has(fcKey)) {
                 seenFunctionCalls.add(fcKey);
                 const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+                const sig = (part as any).thought_signature || (part as any).thoughtSignature || (part.functionCall as any)?.thought_signature || (part.functionCall as any)?.thoughtSignature;
+                if (sig) {
+                  ThoughtSignatureCache.save(callId, part.functionCall.name, sig);
+                }
                 functionCalls.push({
                   id: callId,
                   name: part.functionCall.name,
@@ -334,11 +335,6 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
             completionTokens = chunk.usageMetadata.candidatesTokenCount || completionTokens;
           }
         });
-
-        if (isFirst) {
-          SseStreamHandler.initSseResponse(res);
-          SseStreamHandler.startCodexResponsesStream(res, reqId, originalModel);
-        }
 
         if (geminiRes.usageMetadata) {
           promptTokens = geminiRes.usageMetadata.promptTokenCount || promptTokens;

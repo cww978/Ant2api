@@ -82,11 +82,40 @@ export class AntigravityProvider extends BaseProvider {
 
   private resolveUpstreamModel(model: string): string {
     const clean = model.replace(/^models\//, '');
-    if (clean === 'gemini-3.7-flash' || clean === 'gemini-3.6-flash') return 'gemini-3.6-flash-high';
-    if (clean === 'gemini-3.5-flash') return 'gemini-3.5-flash-low';
-    if (clean === 'gemini-3.1-pro') return 'gemini-3.1-pro-low';
-    if (clean === 'gemini-3.7-thinking') return 'gemini-3.6-flash-high';
+    if (clean === 'gemini-3.7-flash' || clean === 'gemini-3.6-flash') return 'gemini-2.5-pro';
+    if (clean === 'gemini-3.5-flash') return 'gemini-2.5-flash';
+    if (clean === 'gemini-3.1-pro') return 'gemini-2.5-pro';
+    if (clean === 'gemini-3.7-thinking') return 'gemini-2.5-pro';
     return clean;
+  }
+
+  private getCandidateModels(request: GeminiGenerateRequest): string[] {
+    const targetModel = this.resolveUpstreamModel(request.model);
+    let hasToolsHistory = false;
+    let hasThoughtSig = false;
+
+    for (const c of request.contents || []) {
+      for (const p of c.parts || []) {
+        if ((p as any).functionCall || (p as any).functionResponse) {
+          hasToolsHistory = true;
+        }
+        if ((p as any).thought_signature || (p as any).thoughtSignature) {
+          hasThoughtSig = true;
+        }
+      }
+    }
+
+    const models = [targetModel];
+    if (!models.includes('gemini-2.5-pro')) models.push('gemini-2.5-pro');
+    if (!models.includes('gemini-2.5-flash')) models.push('gemini-2.5-flash');
+    if (!models.includes('gemini-3.5-flash-low')) models.push('gemini-3.5-flash-low');
+
+    if (hasToolsHistory && !hasThoughtSig) {
+      // Prioritize 2.5 models for unsigned tool calling history (2.5-pro and 2.5-flash never require thought_signature)
+      return ['gemini-2.5-pro', 'gemini-2.5-flash'];
+    }
+
+    return models;
   }
 
   public async generate(request: GeminiGenerateRequest): Promise<GeminiGenerateResponse> {
@@ -113,12 +142,7 @@ export class AntigravityProvider extends BaseProvider {
 
     let token = await this.getValidAccessToken();
     const projectId = await this.getCloudaicompanionProject(token);
-    const targetModel = this.resolveUpstreamModel(request.model);
-
-    const modelsToTry = [targetModel];
-    if (targetModel.includes('3.6') || targetModel.includes('3.7') || targetModel.includes('flash-high')) {
-      modelsToTry.push('gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3.5-flash-low');
-    }
+    const modelsToTry = this.getCandidateModels(request);
 
     let lastError: any = null;
     for (const m of modelsToTry) {
@@ -206,12 +230,7 @@ export class AntigravityProvider extends BaseProvider {
 
     let token = await this.getValidAccessToken();
     const projectId = await this.getCloudaicompanionProject(token);
-    const targetModel = this.resolveUpstreamModel(request.model);
-
-    const modelsToTry = [targetModel];
-    if (targetModel.includes('3.6') || targetModel.includes('3.7') || targetModel.includes('flash-high')) {
-      modelsToTry.push('gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-3.5-flash-low');
-    }
+    const modelsToTry = this.getCandidateModels(request);
 
     let lastError: any = null;
     for (const m of modelsToTry) {
@@ -298,6 +317,9 @@ export class AntigravityProvider extends BaseProvider {
           try {
             const parsed = JSON.parse(jsonStr);
             const chunk = (parsed.response || parsed) as GeminiStreamChunk;
+            if (chunk.error) {
+              throw new Error(`Antigravity stream error (${chunk.error.code || 400}): ${chunk.error.message || JSON.stringify(chunk.error)}`);
+            }
             onChunk(chunk);
             if (chunk.candidates) {
               fullResponse.candidates = chunk.candidates;
@@ -305,7 +327,11 @@ export class AntigravityProvider extends BaseProvider {
             if (chunk.usageMetadata) {
               fullResponse.usageMetadata = chunk.usageMetadata;
             }
-          } catch (e) {}
+          } catch (e: any) {
+            if (e.message?.startsWith('Antigravity stream error')) {
+              throw e;
+            }
+          }
         }
       }
     }

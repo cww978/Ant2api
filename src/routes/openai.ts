@@ -51,21 +51,14 @@ router.post('/chat/completions', apiKeyAuth, async (req: AuthenticatedRequest, r
       triedIds.push(account.id);
 
       if (isStream) {
+        SseStreamHandler.initSseResponse(res);
         let isFirst = true;
         let outputTokens = 0;
 
         const fullResponse = await provider.streamGenerate(geminiReq, chunk => {
-          if (isFirst) {
-            SseStreamHandler.initSseResponse(res);
-          }
           SseStreamHandler.writeOpenAiChunk(res, reqId, originalModel, chunk, isFirst);
           isFirst = false;
         });
-
-        // If no chunks were emitted at all
-        if (isFirst) {
-          SseStreamHandler.initSseResponse(res);
-        }
 
         SseStreamHandler.endOpenAiStream(res, reqId, originalModel);
 

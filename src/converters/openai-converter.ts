@@ -6,6 +6,7 @@ import {
   GeminiContentPart
 } from '../providers/base.js';
 import { ToolsConverter } from './tools-converter.js';
+import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
 
 export interface OpenAiChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool' | 'function';
@@ -102,12 +103,18 @@ export class OpenAiConverter {
       if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
         for (const tc of msg.tool_calls) {
           try {
-            parts.push({
+            const partObj: any = {
               functionCall: {
                 name: tc.function.name,
                 args: typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : tc.function.arguments || {}
               }
-            });
+            };
+            const cachedSig = ThoughtSignatureCache.get(tc.id, tc.function?.name);
+            const sig = (tc as any).thought_signature || (tc as any).thoughtSignature || cachedSig;
+            if (sig) {
+              partObj.thought_signature = sig;
+            }
+            parts.push(partObj);
           } catch (e) {
             parts.push({
               functionCall: {

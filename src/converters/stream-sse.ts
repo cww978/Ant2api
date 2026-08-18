@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { Response } from 'express';
 import { GeminiStreamChunk } from '../providers/base.js';
+import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
 
 export class SseStreamHandler {
   /**
@@ -33,9 +34,15 @@ export class SseStreamHandler {
     for (const p of parts) {
       if (p.text) textDelta += p.text;
       if (p.functionCall) {
+        const callId = `call_${Math.random().toString(36).substring(2, 10)}`;
+        const sig = (p as any).thought_signature || (p as any).thoughtSignature || (p.functionCall as any)?.thought_signature || (p.functionCall as any)?.thoughtSignature;
+        if (sig) {
+          ThoughtSignatureCache.save(callId, p.functionCall.name, sig);
+        }
+
         toolCalls.push({
           index: 0,
-          id: `call_${Math.random().toString(36).substring(2, 10)}`,
+          id: callId,
           type: 'function',
           function: {
             name: p.functionCall.name,

@@ -45,26 +45,17 @@ router.post('/messages', apiKeyAuth, async (req: AuthenticatedRequest, res: Resp
       triedIds.push(account.id);
 
       if (isStream) {
-        let isFirst = true;
+        SseStreamHandler.initSseResponse(res);
+        SseStreamHandler.startClaudeStream(res, reqId, originalModel, 10);
         let generatedText = '';
 
         const fullResponse = await provider.streamGenerate(geminiReq, chunk => {
-          if (isFirst) {
-            SseStreamHandler.initSseResponse(res);
-            SseStreamHandler.startClaudeStream(res, reqId, originalModel, 10);
-            isFirst = false;
-          }
           const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
           if (text) {
             generatedText += text;
             SseStreamHandler.writeClaudeDelta(res, text);
           }
         });
-
-        if (isFirst) {
-          SseStreamHandler.initSseResponse(res);
-          SseStreamHandler.startClaudeStream(res, reqId, originalModel, 10);
-        }
 
         const outputTokens = fullResponse.usageMetadata?.candidatesTokenCount || Math.ceil(generatedText.length / 4);
         SseStreamHandler.endClaudeStream(res, outputTokens, 'end_turn');

@@ -1,5 +1,6 @@
 import { GeminiGenerateRequest, GeminiGenerateResponse, GeminiContent } from '../providers/base.js';
 import { ToolsConverter } from './tools-converter.js';
+import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
 
 export interface CodexCompletionRequest {
   model?: string;
@@ -222,16 +223,20 @@ export class CodexConverter {
             args = { raw_args: args };
           }
         }
+        const cachedSig = ThoughtSignatureCache.get(id, name);
+        const sig = item.thought_signature || item.thought_signature_base64 || item.thoughtSignature || cachedSig;
+        const partObj: any = {
+          functionCall: {
+            name,
+            args: typeof args === 'object' && args !== null ? args : {}
+          }
+        };
+        if (sig && typeof sig === 'string' && sig.trim().length > 0) {
+          partObj.thought_signature = sig.trim();
+        }
         rawContents.push({
           role: 'model',
-          parts: [
-            {
-              functionCall: {
-                name,
-                args: typeof args === 'object' && args !== null ? args : {}
-              }
-            }
-          ]
+          parts: [partObj]
         });
       } else if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
         const id = item.call_id || item.id;

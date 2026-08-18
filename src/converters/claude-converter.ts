@@ -86,12 +86,16 @@ export class ClaudeConverter {
               }
             });
           } else if (block.type === 'tool_use') {
-            parts.push({
+            const partObj: any = {
               functionCall: {
                 name: block.name || '',
                 args: block.input || {}
               }
-            });
+            };
+            if ((block as any).thought_signature) {
+              partObj.thought_signature = (block as any).thought_signature;
+            }
+            parts.push(partObj);
           } else if (block.type === 'tool_result') {
             const toolName = (block.tool_use_id ? toolIdToNameMap.get(block.tool_use_id) : null) || block.name || 'tool';
             let resData: any = block.content;
