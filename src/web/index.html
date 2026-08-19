@@ -1,33 +1,26 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Ant2api - 智能大模型反向代理与管理控制台</title>
-  <meta name="description" content="高性能 Google Antigravity & Gemini CLI 协议转译中继网关与全功能管理控制台">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/style.css">
-
-  <!-- React 18 & Babel Runtime -->
-  <script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" crossorigin></script>
-  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
-</head>
-<body>
-  <div class="app-background-glow"></div>
-  <div id="root">
-    <div style="height: 100vh; display: flex; align-items: center; justify-content: center; color: #94a3b8; font-family: sans-serif;">
-      <div style="text-align: center;">
-        <div style="font-size: 2rem; margin-bottom: 12px; animation: pulse-ring 1.5s infinite;">⚡</div>
-        <p style="font-size: 0.9rem; font-weight: 500;">正在加载 Ant2api 管理系统...</p>
-      </div>
-    </div>
-  </div>
-
-  <!-- React Next.js Management Application -->
-  <script type="text/babel" src="/app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ant2api</title>
+    <meta
+      name="description"
+      content="高性能 Google Antigravity & Gemini CLI 协议转译中继网关与全功能管理控制台"
+    />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

@@ -4,10 +4,10 @@ import fs from 'fs';
 
 const router = Router();
 
-// Locate static directory (prefer src/web in development, fallback to dist/web)
-let webDir = path.resolve(process.cwd(), 'src/web');
+// Locate static directory (prefer dist/web, fallback to src/web)
+let webDir = path.resolve(process.cwd(), 'dist/web');
 if (!fs.existsSync(webDir)) {
-  webDir = path.resolve(process.cwd(), 'dist/web');
+  webDir = path.resolve(process.cwd(), 'src/web');
 }
 
 router.use(express.static(webDir));
