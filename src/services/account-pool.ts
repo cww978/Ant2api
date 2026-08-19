@@ -2,6 +2,7 @@ import { StorageService, AccountItem } from './storage.js';
 import { BaseProvider } from '../providers/base.js';
 import { AntigravityProvider } from '../providers/antigravity.js';
 import { GeminiCliProvider } from '../providers/gemini-cli.js';
+import { GoogleOAuthService } from '../providers/google-oauth.js';
 
 export class AccountPoolService {
   private static instance: AccountPoolService;
@@ -122,5 +123,124 @@ export class AccountPoolService {
     }
 
     this.storage.saveAccount(account);
+  }
+
+  /**
+   * Enriches an account by fetching real Google userinfo, tier, and model quotas
+   */
+  public async enrichAccountMetadata(account: AccountItem, forceTokenRefresh = false): Promise<AccountItem> {
+    if (account.type !== 'antigravity' && account.type !== 'google_oauth') return account;
+    if (!account.refreshToken && !account.accessToken) return account;
+
+    try {
+      const provider = new AntigravityProvider(account);
+      const token = await provider.getValidAccessToken(forceTokenRefresh);
+
+      // 1. Fetch UserInfo (Email, User Name)
+      try {
+        const userinfo = await GoogleOAuthService.verifyToken(token);
+        if (userinfo.email) {
+          account.email = userinfo.email;
+          if (account.name.startsWith('Google Account') || !account.name) {
+            account.name = userinfo.email;
+          }
+        }
+        if (userinfo.name) {
+          account.userName = userinfo.name;
+        }
+      } catch (e: any) {
+        console.warn(`[AccountPool] Verify token for ${account.name} failed:`, e.message);
+      }
+
+      // 2. Fetch Tier & Project ID
+      try {
+        const res = await fetch('https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'antigravity/2.0'
+          },
+          body: JSON.stringify({ metadata: { ideType: 'ANTIGRAVITY' } })
+        });
+        if (res.ok) {
+          const codeAssist: any = await res.json();
+          if (codeAssist.currentTier?.id === 'free-tier') {
+            account.tier = 'FREE';
+          } else if (codeAssist.currentTier?.id?.includes('pro') || codeAssist.paidTier) {
+            account.tier = 'PRO';
+          } else if (codeAssist.currentTier?.id?.includes('enterprise')) {
+            account.tier = 'ENTERPRISE';
+          } else if (codeAssist.currentTier?.name) {
+            account.tier = codeAssist.currentTier.name;
+          } else {
+            account.tier = 'FREE';
+          }
+          if (codeAssist.cloudaicompanionProject) {
+            account.projectId = codeAssist.cloudaicompanionProject;
+          }
+        }
+      } catch {}
+
+      // 3. Fetch Available Models & Quotas
+      try {
+        const res = await fetch('https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'antigravity/2.0'
+          },
+          body: JSON.stringify({})
+        });
+        if (res.ok) {
+          const data: any = await res.json();
+          const models = data.models || {};
+          const modelQuotas: Record<string, any> = {};
+          for (const [key, val] of Object.entries(models) as any) {
+            if (val.quotaInfo) {
+              const pct = Math.round((val.quotaInfo.remainingFraction ?? 1) * 100);
+              const resetTime = val.quotaInfo.resetTime ? new Date(val.quotaInfo.resetTime) : null;
+              let resetDiff = '';
+              if (resetTime) {
+                const diffMs = resetTime.getTime() - Date.now();
+                if (diffMs > 0) {
+                  const hours = Math.floor(diffMs / (1000 * 60 * 60));
+                  const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+                  resetDiff = `${hours}h ${mins}m`;
+                } else {
+                  resetDiff = '已重置';
+                }
+              }
+              const displayName = val.displayName || key;
+              modelQuotas[displayName] = {
+                percentage: `${pct}%`,
+                resetIn: resetDiff,
+                resetTime: val.quotaInfo.resetTime,
+                remainingFraction: val.quotaInfo.remainingFraction
+              };
+            }
+          }
+          account.quotas = modelQuotas;
+        }
+      } catch {}
+
+      this.storage.saveAccount(account);
+    } catch (err: any) {
+      console.warn(`[AccountPool] Could not enrich metadata for account ${account.name}:`, err.message);
+    }
+
+    return account;
+  }
+
+  /**
+   * Enriches all accounts in the background
+   */
+  public async enrichAllAccounts(): Promise<AccountItem[]> {
+    const accounts = this.storage.getAccounts();
+    for (const acc of accounts) {
+      await this.enrichAccountMetadata(acc);
+    }
+    return this.storage.getAccounts();
   }
 }

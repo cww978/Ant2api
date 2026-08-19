@@ -98,26 +98,8 @@ export class AntigravityProvider extends BaseProvider {
           const p = c.parts[i];
           if (p && p.functionCall) {
             const existingSig = p.thought_signature || p.thoughtSignature || p.functionCall.thought_signature || p.functionCall.thoughtSignature;
-            const sig = existingSig || ThoughtSignatureCache.get(undefined, p.functionCall.name);
-            if (sig && typeof sig === 'string' && sig.trim().length > 0) {
-              p.thought_signature = sig.trim();
-            } else {
-              // Safely sanitize this unsigned function call to avoid Google 400 rejection
-              const fnName = p.functionCall.name || 'tool';
-              const fnArgs = p.functionCall.args || {};
-              c.parts[i] = {
-                text: `[Executed tool: ${fnName} with parameters: ${JSON.stringify(fnArgs)}]`
-              };
-            }
-          } else if (p && p.functionResponse) {
-            const fnName = p.functionResponse.name || 'tool';
-            const fnResp = p.functionResponse.response || {};
-            const sig = ThoughtSignatureCache.get(undefined, fnName);
-            if (!sig) {
-              c.parts[i] = {
-                text: `[Tool Output for ${fnName}: ${JSON.stringify(fnResp)}]`
-              };
-            }
+            const sig = existingSig || ThoughtSignatureCache.getOrSentinel(undefined, p.functionCall.name);
+            p.thought_signature = sig;
           }
         }
       }

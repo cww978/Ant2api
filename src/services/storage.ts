@@ -6,6 +6,9 @@ import { config } from '../config.js';
 export interface AccountItem {
   id: string;
   name: string;
+  email?: string;
+  userName?: string;
+  tier?: string;
   type: 'antigravity' | 'gemini_cli' | 'gemini_api' | 'google_oauth';
   enabled: boolean;
   // OAuth credentials
@@ -29,6 +32,7 @@ export interface AccountItem {
   cooldownUntil?: number;
   createdAt: number;
   notes?: string;
+  quotas?: Record<string, { percentage: string; resetIn: string; remainingFraction?: number }>;
 }
 
 export interface ApiKeyItem {

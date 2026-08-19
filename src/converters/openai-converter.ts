@@ -103,14 +103,28 @@ export class OpenAiConverter {
       if (msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls)) {
         for (const tc of msg.tool_calls) {
           try {
+            let funcName = tc.function?.name || 'tool';
+            if (funcName === 'local_shell_call') funcName = 'shell';
+            if (funcName === 'apply_patch_call') funcName = 'apply_patch';
+
+            let args = typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : tc.function.arguments || {};
+            if (funcName === 'shell' && typeof args === 'object' && !args.command) {
+              for (const altKey of ['cmd', 'code', 'script', 'shell_command']) {
+                if (args[altKey]) {
+                  args.command = args[altKey];
+                  delete args[altKey];
+                  break;
+                }
+              }
+            }
+
             const partObj: any = {
               functionCall: {
-                name: tc.function.name,
-                args: typeof tc.function.arguments === 'string' ? JSON.parse(tc.function.arguments || '{}') : tc.function.arguments || {}
+                name: funcName,
+                args
               }
             };
-            const cachedSig = ThoughtSignatureCache.get(tc.id, tc.function?.name);
-            const sig = (tc as any).thought_signature || (tc as any).thoughtSignature || cachedSig;
+            const sig = (tc as any).thought_signature || (tc as any).thoughtSignature || ThoughtSignatureCache.getOrSentinel(tc.id, funcName);
             if (sig) {
               partObj.thought_signature = sig;
             }
@@ -118,7 +132,7 @@ export class OpenAiConverter {
           } catch (e) {
             parts.push({
               functionCall: {
-                name: tc.function.name,
+                name: tc.function?.name || 'tool',
                 args: {}
               }
             });

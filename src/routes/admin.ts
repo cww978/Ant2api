@@ -6,6 +6,7 @@ import { StatsLoggerService } from '../services/stats-logger.js';
 import { GoogleOAuthService, DEFAULT_OAUTH_CLIENT_ID, DEFAULT_OAUTH_CLIENT_SECRET } from '../providers/google-oauth.js';
 import { AccountPoolService } from '../services/account-pool.js';
 import { ProxyLifecycleService } from '../services/proxy-lifecycle.js';
+import { CliSyncService } from '../services/cli-sync.js';
 import { config, setupGlobalProxy } from '../config.js';
 
 const router = Router();
@@ -38,9 +39,22 @@ router.get('/stats', adminAuth, (req: Request, res: Response) => {
 });
 
 // Accounts Management
-router.get('/accounts', adminAuth, (req: Request, res: Response) => {
-  const accounts = storage.getAccounts();
+router.get('/accounts', adminAuth, async (req: Request, res: Response) => {
+  let accounts = storage.getAccounts();
+  const needsEnrich = accounts.some(a => !a.email || !a.quotas);
+  if (needsEnrich) {
+    accounts = await accountPool.enrichAllAccounts();
+  }
   return res.json({ success: true, data: accounts });
+});
+
+router.post('/accounts/sync-all', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const accounts = await accountPool.enrichAllAccounts();
+    return res.json({ success: true, message: '所有账号配额与信息同步成功', data: accounts });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
 });
 
 router.post('/accounts', adminAuth, async (req: Request, res: Response) => {
@@ -69,23 +83,11 @@ router.post('/accounts', adminAuth, async (req: Request, res: Response) => {
     createdAt: body.createdAt || Date.now()
   };
 
-  // If refresh token provided, try to fetch initial access token
-  if (account.refreshToken && !account.accessToken) {
-    try {
-      const refreshed = await GoogleOAuthService.refreshAccessToken(
-        account.refreshToken,
-        account.clientId,
-        account.clientSecret
-      );
-      account.accessToken = refreshed.accessToken;
-      account.accessTokenExpiresAt = Date.now() + refreshed.expiresIn * 1000;
-    } catch (e: any) {
-      console.warn(`[Admin] Could not immediately refresh token for ${account.name}:`, e.message);
-    }
-  }
-
   storage.saveAccount(account);
-  return res.json({ success: true, data: account });
+  // Enrich in background / immediately
+  await accountPool.enrichAccountMetadata(account);
+  const updated = storage.getAccountById(account.id) || account;
+  return res.json({ success: true, data: updated });
 });
 
 router.delete('/accounts/:id', adminAuth, (req: Request, res: Response) => {
@@ -104,6 +106,7 @@ router.post('/accounts/:id/test', adminAuth, async (req: Request, res: Response)
   try {
     const provider = accountPool.createProvider(account);
     const result = await provider.healthCheck();
+    await accountPool.enrichAccountMetadata(account);
     return res.json({
       success: result.ok,
       message: result.message || (result.ok ? '连接测试通过！' : '连接失败，上游返回异常。')
@@ -125,18 +128,8 @@ router.post('/accounts/:id/refresh', adminAuth, async (req: Request, res: Respon
   }
 
   try {
-    const refreshed = await GoogleOAuthService.refreshAccessToken(
-      account.refreshToken,
-      account.clientId,
-      account.clientSecret
-    );
-    account.accessToken = refreshed.accessToken;
-    account.accessTokenExpiresAt = Date.now() + refreshed.expiresIn * 1000;
-    account.consecutiveErrors = 0;
-    account.cooldownUntil = undefined;
-    storage.saveAccount(account);
-
-    return res.json({ success: true, message: 'Token refreshed successfully', data: account });
+    const enriched = await accountPool.enrichAccountMetadata(account, true);
+    return res.json({ success: true, message: '账号配额与 Token 已成功刷新同步', data: enriched });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -444,6 +437,18 @@ router.post('/restore', adminAuth, (req: Request, res: Response) => {
   }
   storage.importData(data);
   return res.json({ success: true, message: 'Data imported successfully' });
+});
+
+// CLI & Codex Configuration Sync
+router.get('/cli/codex', adminAuth, (req: Request, res: Response) => {
+  const result = CliSyncService.getInstance().inspectCodex();
+  return res.json(result);
+});
+
+router.post('/cli/codex/sync', adminAuth, (req: Request, res: Response) => {
+  const { apiKey, model } = req.body;
+  const result = CliSyncService.getInstance().syncCodex(apiKey, model);
+  return res.json(result);
 });
 
 export default router;

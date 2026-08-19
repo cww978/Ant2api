@@ -1,4 +1,4 @@
-import { GeminiGenerateRequest, GeminiGenerateResponse, GeminiContent } from '../providers/base.js';
+import { GeminiGenerateRequest, GeminiGenerateResponse, GeminiContent, GeminiContentPart } from '../providers/base.js';
 import { ToolsConverter } from './tools-converter.js';
 import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
 
@@ -136,7 +136,7 @@ export class CodexConverter {
 
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
-        if (part.text) {
+        if (part.text && !(part as any).thought) {
           text += part.text;
         }
       }
@@ -171,6 +171,88 @@ export class CodexConverter {
   }
 
   /**
+   * Normalizes tool arguments for standard tools like shell, bash, local_shell
+   */
+  private static normalizeToolArgs(name: string, rawArgs: any): any {
+    let args = rawArgs;
+    if (typeof args === 'string') {
+      try {
+        args = JSON.parse(args);
+      } catch {
+        args = { raw_args: args };
+      }
+    }
+    if (typeof args !== 'object' || args === null) {
+      args = {};
+    }
+
+    const cleanName = name.replace(/^(local_shell_call|shell|bash|local_shell)$/, 'shell');
+    if (cleanName === 'shell' && typeof args === 'object') {
+      if (!args.command) {
+        for (const altKey of ['cmd', 'code', 'script', 'shell_command']) {
+          if (args[altKey]) {
+            args.command = args[altKey];
+            delete args[altKey];
+            break;
+          }
+        }
+      }
+    }
+
+    return args;
+  }
+
+  /**
+   * Parses markdown images or base64 image urls into Gemini parts
+   */
+  private static parseContentBlocks(content: any): GeminiContentPart[] {
+    const parts: GeminiContentPart[] = [];
+    if (!content) return parts;
+
+    if (typeof content === 'string') {
+      parts.push({ text: content });
+      return parts;
+    }
+
+    if (Array.isArray(content)) {
+      for (const item of content) {
+        if (typeof item === 'string') {
+          parts.push({ text: item });
+        } else if (typeof item === 'object' && item !== null) {
+          if (item.type === 'text' || item.type === 'input_text' || item.text) {
+            parts.push({ text: item.text || item.input_text || '' });
+          } else if (item.type === 'image_url' || item.type === 'input_image') {
+            const url = typeof item.image_url === 'string' ? item.image_url : (item.image_url?.url || item.url || '');
+            if (url.startsWith('data:')) {
+              const match = url.match(/^data:([^;]+);base64,(.+)$/);
+              if (match) {
+                parts.push({
+                  inlineData: {
+                    mimeType: match[1],
+                    data: match[2]
+                  }
+                });
+              }
+            } else if (url.startsWith('http://') || url.startsWith('https://')) {
+              parts.push({
+                fileData: {
+                  mimeType: 'image/jpeg',
+                  fileUri: url
+                }
+              });
+            }
+          }
+        }
+      }
+    } else if (typeof content === 'object') {
+      const text = content.text || content.input_text || JSON.stringify(content);
+      parts.push({ text });
+    }
+
+    return parts;
+  }
+
+  /**
    * Converts Codex /v1/responses request to Gemini Generate Request
    */
   public static responsesRequestToGemini(body: any, targetModel: string): GeminiGenerateRequest {
@@ -181,17 +263,16 @@ export class CodexConverter {
     let baseInstructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
 
     if (hasTools) {
-      const toolGuidance = `You are an expert autonomous AI software engineer and coding assistant integrated into an IDE. You have access to tools for interacting with files and the workspace (such as read_file, view_file, list_dir, file_search, grep_search, apply_patch, edit_file, write_file, run_command, etc.).
+      const toolGuidance = `You are an expert autonomous AI software engineer and coding assistant integrated into an IDE. You have access to tools for interacting with files and the workspace (such as read_file, view_file, list_dir, file_search, grep_search, apply_patch, edit_file, write_file, shell, run_command, etc.).
 
 CRITICAL AUTONOMOUS EXECUTION & TOOL INVOCATION RULES:
-1. Immediate Tool Execution: Whenever you decide you need to read, view, search, list, or examine any files or directory structures to analyze or solve the user's request, you MUST immediately invoke the appropriate function call(s) (such as read_file, view_file, grep_search, list_dir) in THIS turn.
-2. NO Conversational Delays/Promises: NEVER output conversational text stating what files you plan to read in the future (e.g., NEVER say "请稍等，我将查看以下文件", "我先查阅一些核心文件", "接下来我将开始阅读这些文件", "Wait while I inspect..."). Instead, invoke the tool call directly right now so the environment can execute it and return the file content to you in the next turn.
+1. Immediate Tool Execution: Whenever you decide you need to read, view, search, list, or examine any files or directory structures to analyze or solve the user's request, you MUST immediately invoke the appropriate function call(s) in THIS turn.
+2. NO Conversational Delays/Promises: NEVER output conversational text stating what files you plan to read in the future (e.g., NEVER say "请稍等，我将查看以下文件", "我先查阅一些核心文件", "Wait while I inspect..."). Instead, invoke the tool call directly right now.
 3. Multi-Step Exploration: You operate in an autonomous agent loop. Proactively call tools in every step until you have gathered all necessary information.
-4. MANDATORY apply_patch TOOL INVOCATION FOR CODE EDITS (NO MARKDOWN PATCH TEXT):
+4. MANDATORY apply_patch TOOL INVOCATION FOR CODE EDITS:
    - When asked to modify, create, edit, optimize, or patch any code or document, you MUST execute the \`apply_patch\` tool function call with the patch string as the \`patch\` parameter!
-   - ABSOLUTELY NEVER output \`*** Begin Patch\` or \`\`\`patch / \`\`\`diff markdown code blocks into your conversational text!
-   - NEVER say "请应用以下补丁" or "以下是修改补丁" in text. You MUST apply it directly by calling the \`apply_patch\` function.
-   - The user's IDE client ONLY tracks modified files, writes to disk, and displays the "N files changed [Review]" diff UI when you invoke the \`apply_patch\` function call!`;
+   - ABSOLUTELY NEVER output \`*** Begin Patch\` or markdown diff code blocks into your conversational text!
+   - NEVER say "请应用以下补丁" in text. You MUST apply it directly by calling the \`apply_patch\` function.`;
       if (baseInstructions) {
         baseInstructions = `${baseInstructions}\n\n${toolGuidance}`;
       } else {
@@ -210,60 +291,62 @@ CRITICAL AUTONOMOUS EXECUTION & TOOL INVOCATION RULES:
     for (const item of body.input || []) {
       if (item.type === 'function_call' || item.type === 'custom_tool_call') {
         const id = item.call_id || item.id;
-        if (id && item.name) {
-          callIdToNameMap.set(id, item.name);
+        const name = item.name === 'local_shell_call' ? 'shell' : (item.name === 'apply_patch_call' ? 'apply_patch' : item.name);
+        if (id && name) {
+          callIdToNameMap.set(id, name);
         }
       }
     }
 
     // Step 2: Convert each input item into Gemini content turns
-    for (const item of body.input || []) {
+    const inputItems = body.input || [];
+    for (let idx = 0; idx < inputItems.length; idx++) {
+      const item = inputItems[idx];
+
       if (item.type === 'message' || !item.type) {
-        const role: 'user' | 'model' = item.role === 'assistant' || item.role === 'model' ? 'model' : 'user';
-        let text = '';
-        if (typeof item.content === 'string') {
-          text = item.content;
-        } else if (Array.isArray(item.content)) {
-          text = item.content
-            .map((c: any) => (typeof c === 'string' ? c : c.text || c.input_text || JSON.stringify(c)))
-            .join('\n');
-        } else if (item.content && typeof item.content === 'object') {
-          text = item.content.text || item.content.input_text || JSON.stringify(item.content);
+        let role: 'user' | 'model' = item.role === 'assistant' || item.role === 'model' ? 'model' : 'user';
+
+        // Rewrite terminal plain-text assistant prefill to 'user' so Gemini doesn't reject
+        if (idx === inputItems.length - 1 && role === 'model') {
+          role = 'user';
         }
-        if (text) {
-          rawContents.push({ role, parts: [{ text }] });
+
+        const parts = this.parseContentBlocks(item.content);
+        if (parts.length > 0) {
+          rawContents.push({ role, parts });
         }
       } else if (item.type === 'function_call' || item.type === 'custom_tool_call') {
         const id = item.call_id || item.id;
-        const name = item.name || (id ? callIdToNameMap.get(id) : null) || 'unknown_tool';
+        let name = item.name || (id ? callIdToNameMap.get(id) : null) || 'unknown_tool';
+        if (name === 'local_shell_call') name = 'shell';
+        if (name === 'apply_patch_call') name = 'apply_patch';
+
         let args = item.arguments || item.input || {};
-        if (typeof args === 'string') {
-          try {
-            args = JSON.parse(args);
-          } catch {
-            args = { raw_args: args };
-          }
-        }
-        const cachedSig = ThoughtSignatureCache.get(id, name);
-        const sig = item.thought_signature || item.thought_signature_base64 || item.thoughtSignature || cachedSig;
+        args = this.normalizeToolArgs(name, args);
+
+        const sig = item.thought_signature || item.thought_signature_base64 || item.thoughtSignature || ThoughtSignatureCache.getOrSentinel(id, name);
+
         const partObj: any = {
           functionCall: {
             name,
-            args: typeof args === 'object' && args !== null ? args : {}
+            args
           }
         };
+
         if (sig && typeof sig === 'string' && sig.trim().length > 0) {
           partObj.thought_signature = sig.trim();
         }
+
         rawContents.push({
           role: 'model',
           parts: [partObj]
         });
       } else if (item.type === 'function_call_output' || item.type === 'custom_tool_call_output') {
         const id = item.call_id || item.id;
-        // CRITICAL: Look up the original function name using callIdToNameMap
-        const name = item.name || (id ? callIdToNameMap.get(id) : null) || 'tool';
-        
+        let name = item.name || (id ? callIdToNameMap.get(id) : null) || 'tool';
+        if (name === 'local_shell_call') name = 'shell';
+        if (name === 'apply_patch_call') name = 'apply_patch';
+
         let responseObj: Record<string, any> = {};
         if (item.output && typeof item.output === 'object' && !Array.isArray(item.output)) {
           responseObj = item.output;
@@ -318,9 +401,12 @@ CRITICAL AUTONOMOUS EXECUTION & TOOL INVOCATION RULES:
       tools = ToolsConverter.openAiToolsToGemini(body.tools);
     }
 
-    const generationConfig: any = {};
-    if (typeof body.temperature === 'number') generationConfig.temperature = body.temperature;
-    if (typeof body.top_p === 'number') generationConfig.topP = body.top_p;
+    const generationConfig: any = {
+      temperature: typeof body.temperature === 'number' ? body.temperature : 0.7,
+      topP: typeof body.top_p === 'number' ? body.top_p : 1.0,
+      topK: 40
+    };
+
     if (typeof body.max_tokens === 'number') generationConfig.maxOutputTokens = body.max_tokens;
 
     if (body.thinking) {
@@ -333,8 +419,7 @@ CRITICAL AUTONOMOUS EXECUTION & TOOL INVOCATION RULES:
       contents: contents.length > 0 ? contents : [{ role: 'user', parts: [{ text: 'Hello' }] }],
       systemInstruction,
       tools,
-      generationConfig: Object.keys(generationConfig).length > 0 ? generationConfig : undefined
+      generationConfig
     };
   }
 }
-

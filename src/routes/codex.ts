@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import crypto from 'crypto';
 import { apiKeyAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { AccountPoolService } from '../services/account-pool.js';
@@ -8,6 +8,7 @@ import { StatsLoggerService } from '../services/stats-logger.js';
 import { CodexConverter, CodexCompletionRequest, CodexEditRequest } from '../converters/codex.js';
 import { SseStreamHandler } from '../converters/stream-sse.js';
 import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
+import { PatchPreflightService } from '../services/patch-preflight.js';
 
 const router = Router();
 const accountPool = AccountPoolService.getInstance();
@@ -275,10 +276,11 @@ function extractPatchFromText(text: string): string | null {
   return null;
 }
 
-// POST /v1/responses (Codex Next-Gen Agent Responses API from Antigravity)
+// POST /v1/responses (Codex Next-Gen Agent Responses API)
 router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Response) => {
   const start = Date.now();
-  const reqId = `resp-${crypto.randomUUID().replace(/-/g, '').substring(0, 24)}`;
+  const randomSuffix = crypto.randomUUID().replace(/-/g, '').substring(0, 24);
+  const reqId = `resp-${randomSuffix}`;
   const body = req.body;
   const isStream = !!body.stream || req.headers.accept?.includes('text/event-stream');
 
@@ -301,96 +303,278 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
         SseStreamHandler.initSseResponse(res);
         SseStreamHandler.startCodexResponsesStream(res, reqId, originalModel);
 
+        let heartbeatTimer: NodeJS.Timeout | null = setInterval(() => {
+          try {
+            SseStreamHandler.writeHeartbeat(res);
+          } catch {}
+        }, 15000);
+
         let fullText = '';
-        let promptTokens = 0;
-        let completionTokens = 0;
+        let accumulatedThinking = '';
+        let reasoningOpen = false;
+        let reasoningIndex = 0;
+        let reasoningSeq = 0;
+        let activeReasoningId = '';
+
         let messageItemStarted = false;
         let messageItemClosed = false;
-        let currentOutputIndex = 0;
-        const messageIndex = 0;
-        const functionCalls: Array<{ id: string; name: string; args: any }> = [];
+        let messageIndex = 0;
+        const messageId = `msg_${randomSuffix.substring(0, 16)}_0`;
+
+        let nextOutputIndex = 0;
+        let promptTokens = 0;
+        let completionTokens = 0;
+        let finishReason: string | null = null;
+
+        const finalOutputItems: any[] = [];
         const seenFunctionCalls = new Set<string>();
+        let hasSeenToolCalls = false;
 
-        const geminiRes = await provider.streamGenerate(geminiReq, (chunk) => {
-          const parts = chunk.candidates?.[0]?.content?.parts || [];
-          for (const part of parts) {
-            if (part.text) {
-              if (!messageItemStarted) {
-                SseStreamHandler.startCodexMessageItem(res, reqId, messageIndex);
-                messageItemStarted = true;
-                currentOutputIndex = 1;
-              }
-              fullText += part.text;
-              SseStreamHandler.writeCodexResponsesDelta(res, part.text, messageIndex);
+        const cleanUpHeartbeat = () => {
+          if (heartbeatTimer) {
+            clearInterval(heartbeatTimer);
+            heartbeatTimer = null;
+          }
+        };
+
+        try {
+          const geminiRes = await provider.streamGenerate(geminiReq, (chunk) => {
+            const candidate = chunk.candidates?.[0];
+            if (candidate?.finishReason) {
+              finishReason = candidate.finishReason;
             }
-            if (part.functionCall) {
-              const fcKey = `${part.functionCall.name}_${JSON.stringify(part.functionCall.args || {})}`;
-              if (!seenFunctionCalls.has(fcKey)) {
-                seenFunctionCalls.add(fcKey);
 
-                // If text message was in progress, close it before opening the function call item
-                if (messageItemStarted && !messageItemClosed) {
-                  SseStreamHandler.closeCodexMessageItem(res, reqId, fullText, messageIndex);
-                  messageItemClosed = true;
-                }
+            const parts = candidate?.content?.parts || [];
+            for (const part of parts) {
+              const isThought = Boolean((part as any).thought);
 
-                const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
-                const sig = (part as any).thought_signature || (part as any).thoughtSignature || (part.functionCall as any)?.thought_signature || (part.functionCall as any)?.thoughtSignature;
-                if (sig) {
-                  ThoughtSignatureCache.save(callId, part.functionCall.name, sig);
-                }
-                functionCalls.push({
-                  id: callId,
-                  name: part.functionCall.name,
-                  args: part.functionCall.args || {}
+              // 1. Close reasoning commentary before starting normal text or tool calls
+              const isTextOrTool = Boolean(part.text || part.functionCall);
+              if (isTextOrTool && !isThought && reasoningOpen) {
+                SseStreamHandler.closeCodexThinkingItem(res, activeReasoningId, accumulatedThinking, reasoningIndex);
+                finalOutputItems.push({
+                  id: activeReasoningId,
+                  type: 'message',
+                  role: 'assistant',
+                  phase: 'commentary',
+                  status: 'completed',
+                  content: [{ type: 'output_text', text: accumulatedThinking, annotations: [] }]
                 });
+                reasoningOpen = false;
+              }
 
-                const fcOutputIndex = currentOutputIndex++;
-                SseStreamHandler.writeCodexFunctionCall(
-                  res,
-                  callId,
-                  fcOutputIndex,
-                  part.functionCall.name,
-                  part.functionCall.args || {}
-                );
+              // 2. Handle Text (Thinking vs Assistant Output)
+              if (part.text) {
+                const cleanText = part.text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<\/?think>/g, '');
+
+                if (isThought) {
+                  if (!reasoningOpen) {
+                    reasoningIndex = nextOutputIndex++;
+                    activeReasoningId = `msg_thought_${randomSuffix.substring(0, 16)}_${reasoningSeq++}`;
+                    accumulatedThinking = '';
+                    SseStreamHandler.startCodexThinkingItem(res, activeReasoningId, reasoningIndex);
+                    reasoningOpen = true;
+                  }
+                  accumulatedThinking += part.text;
+                  SseStreamHandler.writeCodexThinkingDelta(res, activeReasoningId, part.text, reasoningIndex);
+                } else if (cleanText) {
+                  if (!messageItemStarted) {
+                    messageIndex = nextOutputIndex++;
+                    SseStreamHandler.startCodexMessageItem(res, messageId, messageIndex, 'commentary');
+                    messageItemStarted = true;
+                  }
+                  fullText += cleanText;
+                  SseStreamHandler.writeCodexResponsesDelta(res, messageId, cleanText, messageIndex);
+                }
+              }
+
+              // 3. Handle Tool Calls (apply_patch, shell, or standard functions)
+              if (part.functionCall) {
+                const fcKey = `${part.functionCall.name}_${JSON.stringify(part.functionCall.args || {})}`;
+                if (!seenFunctionCalls.has(fcKey)) {
+                  seenFunctionCalls.add(fcKey);
+                  hasSeenToolCalls = true;
+
+                  // If text message was in progress, close it before opening the tool call item
+                  if (messageItemStarted && !messageItemClosed) {
+                    SseStreamHandler.closeCodexMessageItem(res, messageId, fullText, messageIndex, 'commentary');
+                    messageItemClosed = true;
+                    finalOutputItems.push({
+                      id: messageId,
+                      type: 'message',
+                      role: 'assistant',
+                      phase: 'commentary',
+                      status: 'completed',
+                      content: [{ type: 'output_text', text: fullText, annotations: [] }]
+                    });
+                  }
+
+                  let funcName = part.functionCall.name || 'unknown_tool';
+                  if (funcName === 'local_shell_call') funcName = 'shell';
+                  if (funcName === 'apply_patch_call') funcName = 'apply_patch';
+
+                  let rawArgs = part.functionCall.args || {};
+                  let callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+                  let toolItemId = `item-${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+
+                  const sig = (part as any).thought_signature || (part as any).thoughtSignature || (part.functionCall as any)?.thought_signature || (part.functionCall as any)?.thoughtSignature;
+                  if (sig) {
+                    ThoughtSignatureCache.save(callId, funcName, sig);
+                  }
+
+                  const isCustomTool = funcName === 'apply_patch' || funcName === 'apply_patch_v2' || funcName === 'shell';
+                  const toolOutputIndex = nextOutputIndex++;
+
+                  if (isCustomTool && (funcName === 'apply_patch' || funcName === 'apply_patch_v2')) {
+                    // Extract & Preflight optimize patch
+                    const extractedPatch = PatchPreflightService.extractPatchInput(rawArgs);
+                    const { patch: optimizedPatch } = PatchPreflightService.optimizePatch(extractedPatch);
+
+                    SseStreamHandler.writeCodexCustomToolCall(
+                      res,
+                      callId,
+                      toolItemId,
+                      toolOutputIndex,
+                      funcName,
+                      optimizedPatch
+                    );
+
+                    finalOutputItems.push({
+                      id: toolItemId,
+                      type: 'custom_tool_call',
+                      status: 'completed',
+                      name: funcName,
+                      call_id: callId,
+                      input: optimizedPatch
+                    });
+                  } else if (isCustomTool && funcName === 'shell') {
+                    const normalized = typeof rawArgs === 'string' ? rawArgs : (rawArgs.command || JSON.stringify(rawArgs));
+                    SseStreamHandler.writeCodexCustomToolCall(
+                      res,
+                      callId,
+                      toolItemId,
+                      toolOutputIndex,
+                      funcName,
+                      normalized
+                    );
+
+                    finalOutputItems.push({
+                      id: toolItemId,
+                      type: 'custom_tool_call',
+                      status: 'completed',
+                      name: funcName,
+                      call_id: callId,
+                      input: normalized
+                    });
+                  } else {
+                    // Standard function call
+                    const argsStr = typeof rawArgs === 'string' ? rawArgs : JSON.stringify(rawArgs);
+                    SseStreamHandler.writeCodexFunctionCall(
+                      res,
+                      callId,
+                      toolItemId,
+                      toolOutputIndex,
+                      funcName,
+                      argsStr
+                    );
+
+                    finalOutputItems.push({
+                      id: toolItemId,
+                      type: 'function_call',
+                      status: 'completed',
+                      name: funcName,
+                      call_id: callId,
+                      arguments: argsStr
+                    });
+                  }
+                }
               }
             }
-          }
 
-          if (chunk.usageMetadata) {
-            promptTokens = chunk.usageMetadata.promptTokenCount || promptTokens;
-            completionTokens = chunk.usageMetadata.candidatesTokenCount || completionTokens;
-          }
-        });
+            if (chunk.usageMetadata) {
+              promptTokens = chunk.usageMetadata.promptTokenCount || promptTokens;
+              completionTokens = chunk.usageMetadata.candidatesTokenCount || completionTokens;
+            }
+          });
 
-        if (geminiRes.usageMetadata) {
-          promptTokens = geminiRes.usageMetadata.promptTokenCount || promptTokens;
-          completionTokens = geminiRes.usageMetadata.candidatesTokenCount || completionTokens;
+          if (geminiRes.usageMetadata) {
+            promptTokens = geminiRes.usageMetadata.promptTokenCount || promptTokens;
+            completionTokens = geminiRes.usageMetadata.candidatesTokenCount || completionTokens;
+          }
+        } finally {
+          cleanUpHeartbeat();
         }
 
-        // Safety Net Fallback: If Gemini outputted a patch in text instead of tool call, convert it to apply_patch
-        if (functionCalls.length === 0 && fullText.includes('*** Begin Patch')) {
+        // Close thinking if still open at the end
+        if (reasoningOpen) {
+          SseStreamHandler.closeCodexThinkingItem(res, activeReasoningId, accumulatedThinking, reasoningIndex);
+          finalOutputItems.push({
+            id: activeReasoningId,
+            type: 'message',
+            role: 'assistant',
+            phase: 'commentary',
+            status: 'completed',
+            content: [{ type: 'output_text', text: accumulatedThinking, annotations: [] }]
+          });
+          reasoningOpen = false;
+        }
+
+        // Safety Net Fallback: If model outputted a patch in text without tool call, convert to apply_patch custom_tool_call
+        if (!hasSeenToolCalls && fullText.includes('*** Begin Patch')) {
           const fallbackPatch = extractPatchFromText(fullText);
           if (fallbackPatch) {
-            if (messageItemStarted && !messageItemClosed) {
-              SseStreamHandler.closeCodexMessageItem(res, reqId, fullText, messageIndex);
-              messageItemClosed = true;
-            }
+            const { patch: optimizedPatch } = PatchPreflightService.optimizePatch(fallbackPatch);
             const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
-            functionCalls.push({
-              id: callId,
-              name: 'apply_patch',
-              args: { patch: fallbackPatch }
-            });
-            const fcOutputIndex = currentOutputIndex++;
-            SseStreamHandler.writeCodexFunctionCall(
+            const toolItemId = `item-${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+            const toolOutputIndex = nextOutputIndex++;
+
+            if (messageItemStarted && !messageItemClosed) {
+              SseStreamHandler.closeCodexMessageItem(res, messageId, fullText, messageIndex, 'commentary');
+              messageItemClosed = true;
+              finalOutputItems.push({
+                id: messageId,
+                type: 'message',
+                role: 'assistant',
+                phase: 'commentary',
+                status: 'completed',
+                content: [{ type: 'output_text', text: fullText, annotations: [] }]
+              });
+            }
+
+            SseStreamHandler.writeCodexCustomToolCall(
               res,
               callId,
-              fcOutputIndex,
+              toolItemId,
+              toolOutputIndex,
               'apply_patch',
-              { patch: fallbackPatch }
+              optimizedPatch
             );
+
+            finalOutputItems.push({
+              id: toolItemId,
+              type: 'custom_tool_call',
+              status: 'completed',
+              name: 'apply_patch',
+              call_id: callId,
+              input: optimizedPatch
+            });
+            hasSeenToolCalls = true;
           }
+        }
+
+        // Close text message if still open
+        if (messageItemStarted && !messageItemClosed) {
+          const phase = hasSeenToolCalls ? 'commentary' : 'final_answer';
+          SseStreamHandler.closeCodexMessageItem(res, messageId, fullText, messageIndex, phase);
+          finalOutputItems.push({
+            id: messageId,
+            type: 'message',
+            role: 'assistant',
+            phase,
+            status: 'completed',
+            content: [{ type: 'output_text', text: fullText, annotations: [] }]
+          });
+          messageItemClosed = true;
         }
 
         const totalTokens = (promptTokens || 20) + (completionTokens || Math.ceil(fullText.length / 4));
@@ -398,12 +582,10 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
           res,
           reqId,
           originalModel,
-          fullText,
-          functionCalls,
+          finalOutputItems,
           promptTokens,
           completionTokens,
-          messageItemClosed,
-          messageIndex
+          finishReason
         );
 
         const latencyMs = Date.now() - start;
@@ -431,48 +613,86 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
 
         return;
       } else {
+        // Non-streaming /v1/responses
         const geminiRes = await provider.generate(geminiReq);
         const candidateParts = geminiRes.candidates?.[0]?.content?.parts || [];
         let text = '';
         const outputItems: any[] = [];
+        let hasToolCalls = false;
 
         for (const part of candidateParts) {
-          if (part.text) text += part.text;
+          if (part.text && !(part as any).thought) {
+            text += part.text;
+          }
           if (part.functionCall) {
+            hasToolCalls = true;
+            let funcName = part.functionCall.name || 'unknown_tool';
+            if (funcName === 'local_shell_call') funcName = 'shell';
+            if (funcName === 'apply_patch_call') funcName = 'apply_patch';
+
             const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
-            outputItems.push({
-              id: callId,
-              type: 'function_call',
-              name: part.functionCall.name,
-              call_id: callId,
-              arguments: typeof part.functionCall.args === 'string'
+            const isCustomTool = funcName === 'apply_patch' || funcName === 'apply_patch_v2' || funcName === 'shell';
+
+            if (isCustomTool && (funcName === 'apply_patch' || funcName === 'apply_patch_v2')) {
+              const rawPatch = PatchPreflightService.extractPatchInput(part.functionCall.args);
+              const { patch: optimizedPatch } = PatchPreflightService.optimizePatch(rawPatch);
+              outputItems.push({
+                id: callId,
+                type: 'custom_tool_call',
+                name: funcName,
+                call_id: callId,
+                input: optimizedPatch
+              });
+            } else if (isCustomTool && funcName === 'shell') {
+              const inputCmd = typeof part.functionCall.args === 'string'
                 ? part.functionCall.args
-                : JSON.stringify(part.functionCall.args || {})
-            });
+                : (part.functionCall.args?.command || JSON.stringify(part.functionCall.args || {}));
+              outputItems.push({
+                id: callId,
+                type: 'custom_tool_call',
+                name: funcName,
+                call_id: callId,
+                input: inputCmd
+              });
+            } else {
+              outputItems.push({
+                id: callId,
+                type: 'function_call',
+                name: funcName,
+                call_id: callId,
+                arguments: typeof part.functionCall.args === 'string'
+                  ? part.functionCall.args
+                  : JSON.stringify(part.functionCall.args || {})
+              });
+            }
           }
         }
 
         // Safety Net Fallback for non-streaming
-        if (outputItems.filter(i => i.type === 'function_call').length === 0 && text.includes('*** Begin Patch')) {
+        if (!hasToolCalls && text.includes('*** Begin Patch')) {
           const fallbackPatch = extractPatchFromText(text);
           if (fallbackPatch) {
+            const { patch: optimizedPatch } = PatchPreflightService.optimizePatch(fallbackPatch);
             const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
             outputItems.push({
               id: callId,
-              type: 'function_call',
+              type: 'custom_tool_call',
               name: 'apply_patch',
               call_id: callId,
-              arguments: JSON.stringify({ patch: fallbackPatch })
+              input: optimizedPatch
             });
+            hasToolCalls = true;
           }
         }
 
         if (text || outputItems.length === 0) {
+          const phase = hasToolCalls ? 'commentary' : 'final_answer';
           outputItems.unshift({
             id: `item_${reqId}`,
             type: 'message',
             status: 'completed',
             role: 'assistant',
+            phase,
             content: [{ type: 'output_text', text }]
           });
         }
@@ -501,6 +721,10 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
           clientIp: req.ip
         });
 
+        const promptTok = geminiRes.usageMetadata?.promptTokenCount || 0;
+        const compTok = geminiRes.usageMetadata?.candidatesTokenCount || 0;
+        const totalTok = geminiRes.usageMetadata?.totalTokenCount || promptTok + compTok;
+
         return res.json({
           id: reqId,
           object: 'response',
@@ -508,11 +732,11 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
           model: originalModel,
           output: outputItems,
           usage: {
-            input_tokens: geminiRes.usageMetadata?.promptTokenCount || 0,
-            output_tokens: geminiRes.usageMetadata?.candidatesTokenCount || 0,
-            total_tokens: geminiRes.usageMetadata?.totalTokenCount || 0,
-            prompt_tokens: geminiRes.usageMetadata?.promptTokenCount || 0,
-            completion_tokens: geminiRes.usageMetadata?.candidatesTokenCount || 0,
+            input_tokens: promptTok,
+            output_tokens: compTok,
+            total_tokens: totalTok,
+            prompt_tokens: promptTok,
+            completion_tokens: compTok,
             input_token_details: {
               cached_tokens: 0
             },
@@ -528,15 +752,14 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
         accountPool.reportError(selectedAccount.id, error);
       }
       if (res.headersSent) {
-        // If stream headers were already sent, gracefully complete the stream so client does not disconnect abruptly
         SseStreamHandler.endCodexResponsesStream(
           res,
           reqId,
           originalModel,
-          `\n\n[Error: ${error?.message || 'Upstream error'}]`,
           [],
           0,
-          0
+          0,
+          'ERROR'
         );
         return;
       }
