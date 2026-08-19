@@ -18,17 +18,6 @@ export function errorHandler(err: any, req: Request, res: Response, next: NextFu
     });
   }
 
-  // Return Claude formatted error if requesting Claude endpoints
-  if (req.originalUrl.startsWith('/v1/messages')) {
-    return res.status(statusCode).json({
-      type: 'error',
-      error: {
-        type: statusCode === 429 ? 'rate_limit_error' : 'api_error',
-        message
-      }
-    });
-  }
-
   // General JSON error
   return res.status(statusCode).json({
     error: {

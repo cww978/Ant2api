@@ -1,7 +1,7 @@
 {
   "name": "ant2api",
   "version": "1.0.0",
-  "description": "High-performance gateway converting GeminiCLI and Antigravity into OpenAI, Claude, and Gemini API compatible endpoints with Web Management Dashboard and Linux deployment support.",
+  "description": "High-performance gateway converting GeminiCLI and Antigravity into OpenAI, Codex, and Gemini API compatible endpoints with Web Management Dashboard and Linux deployment support.",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -14,7 +14,7 @@
     "antigravity",
     "gemini-cli",
     "openai-api",
-    "claude-api",
+    "codex-api",
     "gemini-api",
     "ai-gateway",
     "llm-proxy"

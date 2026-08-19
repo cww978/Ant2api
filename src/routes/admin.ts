@@ -5,6 +5,7 @@ import { StorageService, AccountItem, ApiKeyItem, ModelMappingItem } from '../se
 import { StatsLoggerService } from '../services/stats-logger.js';
 import { GoogleOAuthService, DEFAULT_OAUTH_CLIENT_ID, DEFAULT_OAUTH_CLIENT_SECRET } from '../providers/google-oauth.js';
 import { AccountPoolService } from '../services/account-pool.js';
+import { ProxyLifecycleService } from '../services/proxy-lifecycle.js';
 import { config, setupGlobalProxy } from '../config.js';
 
 const router = Router();
@@ -205,10 +206,23 @@ router.delete('/mappings/:id', adminAuth, (req: Request, res: Response) => {
 
 // Logs & Audits
 router.get('/logs', adminAuth, (req: Request, res: Response) => {
-  const limit = parseInt(req.query.limit as string || '100', 10);
-  const offset = parseInt(req.query.offset as string || '0', 10);
-  const result = storage.getLogs(limit, offset);
-  return res.json({ success: true, data: result.logs, total: result.total });
+  const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+  const limit = Math.max(1, Math.min(200, parseInt((req.query.limit as string) || (req.query.pageSize as string) || '20', 10)));
+  const offset = req.query.offset !== undefined ? parseInt(req.query.offset as string, 10) : (page - 1) * limit;
+  const search = req.query.search as string;
+  const status = req.query.status as string;
+
+  const result = storage.getLogs(limit, offset, search, status);
+  const totalPages = Math.ceil(result.total / limit) || 1;
+
+  return res.json({
+    success: true,
+    data: result.logs,
+    total: result.total,
+    page,
+    pageSize: limit,
+    totalPages
+  });
 });
 
 router.delete('/logs', adminAuth, (req: Request, res: Response) => {
@@ -230,13 +244,70 @@ router.get('/settings', adminAuth, (req: Request, res: Response) => {
   });
 });
 
-router.post('/settings', adminAuth, (req: Request, res: Response) => {
-  const body = req.body;
-  const updated = storage.updateSettings(body);
-  if (body.proxyUrl !== undefined) {
-    setupGlobalProxy(body.proxyUrl);
+// Proxy Lifecycle Control Endpoints
+router.get('/proxy/status', adminAuth, (req: Request, res: Response) => {
+  const proxyService = ProxyLifecycleService.getInstance();
+  return res.json({ success: true, data: proxyService.getStatus() });
+});
+
+router.post('/proxy/start', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const proxyService = ProxyLifecycleService.getInstance();
+    const status = await proxyService.start();
+    return res.json({ success: true, message: `反向代理服务已在端口 ${status.port} 启动`, data: status });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: `启动失败: ${err.message}` });
   }
-  return res.json({ success: true, data: updated });
+});
+
+router.post('/proxy/stop', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const proxyService = ProxyLifecycleService.getInstance();
+    const status = await proxyService.stop();
+    return res.json({ success: true, message: '反向代理服务已停止', data: status });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: `停止失败: ${err.message}` });
+  }
+});
+
+router.post('/proxy/restart', adminAuth, async (req: Request, res: Response) => {
+  try {
+    const proxyService = ProxyLifecycleService.getInstance();
+    const body = req.body || {};
+    const status = await proxyService.restart(body);
+    return res.json({ success: true, message: `反向代理服务已重启 (端口: ${status.port})`, data: status });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: `重启失败: ${err.message}` });
+  }
+});
+
+router.get('/proxy/config', adminAuth, (req: Request, res: Response) => {
+  const proxyService = ProxyLifecycleService.getInstance();
+  const settings = storage.getProxySettings();
+  return res.json({
+    success: true,
+    data: {
+      ...settings,
+      status: proxyService.getStatus().status,
+      activePort: proxyService.getStatus().port,
+      uptime: proxyService.getStatus().uptime
+    }
+  });
+});
+
+router.post('/proxy/config', adminAuth, async (req: Request, res: Response) => {
+  const body = req.body;
+  const updated = storage.updateProxySettings(body);
+  const restart = Boolean(body.restart);
+  if (restart) {
+    try {
+      const proxyService = ProxyLifecycleService.getInstance();
+      await proxyService.restart(updated);
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: `配置已保存但重启服务失败: ${err.message}`, data: updated });
+    }
+  }
+  return res.json({ success: true, message: restart ? '配置已保存并成功重启服务' : '配置已保存', data: updated });
 });
 
 // OAuth Helper Endpoints

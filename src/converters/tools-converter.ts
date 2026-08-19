@@ -94,29 +94,6 @@ export class ToolsConverter {
   }
 
   /**
-   * Converts Claude tools array to Gemini tool declarations
-   */
-  public static claudeToolsToGemini(tools?: any[]): GeminiToolDeclaration[] | undefined {
-    if (!tools || !Array.isArray(tools) || tools.length === 0) return undefined;
-
-    const functionDeclarations: any[] = [];
-    for (const tool of tools) {
-      if (tool.name) {
-        functionDeclarations.push({
-          name: tool.name,
-          description: tool.description || '',
-          parameters: ToolsConverter.sanitizeSchema(tool.input_schema || { type: 'OBJECT', properties: {} })
-        });
-      }
-    }
-
-    if (functionDeclarations.length === 0) return undefined;
-
-    functionDeclarations.sort((a, b) => a.name.localeCompare(b.name));
-    return [{ functionDeclarations }];
-  }
-
-  /**
    * Converts Gemini functionCall parts to OpenAI tool_calls
    */
   public static geminiPartsToOpenAiToolCalls(parts: GeminiContentPart[]): any[] | undefined {
@@ -137,32 +114,5 @@ export class ToolsConverter {
     }
 
     return toolCalls.length > 0 ? toolCalls : undefined;
-  }
-
-  /**
-   * Converts Gemini functionCall parts to Claude content blocks
-   */
-  public static geminiPartsToClaudeContentBlocks(parts: GeminiContentPart[]): any[] {
-    const blocks: any[] = [];
-    let callIdx = 0;
-
-    for (const part of parts) {
-      if (part.text) {
-        blocks.push({
-          type: 'text',
-          text: part.text
-        });
-      }
-      if (part.functionCall) {
-        blocks.push({
-          type: 'tool_use',
-          id: `toolu_${Math.random().toString(36).substring(2, 10)}_${callIdx++}`,
-          name: part.functionCall.name,
-          input: part.functionCall.args || {}
-        });
-      }
-    }
-
-    return blocks;
   }
 }

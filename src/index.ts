@@ -3,72 +3,63 @@ import cors from 'cors';
 import { config } from './config.js';
 import { requestLogger } from './middleware/logger.js';
 import { errorHandler } from './middleware/error.js';
-import openAiRouter from './routes/openai.js';
-import claudeRouter from './routes/claude.js';
-import geminiRouter from './routes/gemini.js';
-import codexRouter from './routes/codex.js';
 import adminRouter from './routes/admin.js';
 import staticRouter from './routes/static.js';
-import { WebSocketHandlerService } from './services/websocket-server.js';
+import { ProxyLifecycleService } from './services/proxy-lifecycle.js';
 
 const app = express();
 
-// Middlewares
+// Middlewares for Admin Server
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(requestLogger);
 
-// Health check
+// Admin health check
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
+    service: 'ant2api-admin-server',
     version: '1.0.0',
+    adminPort: config.adminPort,
     uptime: process.uptime(),
     timestamp: Date.now()
   });
 });
 
-// API Routes
-app.use('/v1', openAiRouter);
-app.use('/v1', claudeRouter);
-app.use('/v1', codexRouter);
-app.use('/v1/engines', codexRouter);
-app.use('/v1beta', geminiRouter);
+// Admin REST API Routes
 app.use('/api/admin', adminRouter);
 
-// Web Management UI
+// Web Management UI (Next.js React Build / Static Assets)
 app.use('/', staticRouter);
 
 // Global Error Handler
 app.use(errorHandler);
 
-// Start Server
-const server = app.listen(config.port, config.host, () => {
-  // Attach native WebSocket support for /v1/responses and Codex clients
-  WebSocketHandlerService.getInstance().attach(server);
-
+// Start Admin Server
+const adminServer = app.listen(config.adminPort, config.adminHost, async () => {
   console.log(`
 =============================================================
-  🚀 Ant2api Gateway is running!
+  🎛️  Ant2api Admin Web Management Console
   -----------------------------------------------------------
-  🌐 Web Dashboard:     http://localhost:${config.port}
+  🌐 Web Dashboard:     http://localhost:${config.adminPort}
   🔑 Admin Password:    ${config.adminPassword}
-  📡 OpenAI Endpoint:   http://localhost:${config.port}/v1/chat/completions
-  📡 Claude Endpoint:   http://localhost:${config.port}/v1/messages
-  📡 Codex Endpoint:    http://localhost:${config.port}/v1/completions
-  📡 WebSocket Endpoint:ws://localhost:${config.port}/v1/responses
-  📡 Gemini Endpoint:   http://localhost:${config.port}/v1beta/models
-  📊 Health Check:      http://localhost:${config.port}/health
+  📊 Admin Health:      http://localhost:${config.adminPort}/health
 =============================================================
-`);
+  `);
+
+  // Initialize and auto-start the Reverse Proxy Service on its separate port
+  const proxyLifecycle = ProxyLifecycleService.getInstance();
+  await proxyLifecycle.init();
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  server.close(() => {
-    console.log('HTTP server closed');
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM signal received: closing servers');
+  await ProxyLifecycleService.getInstance().stop();
+  adminServer.close(() => {
+    console.log('Admin server closed');
   });
 });
 
 export default app;
+

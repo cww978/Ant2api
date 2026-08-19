@@ -7,8 +7,12 @@ import { ProxyAgent, setGlobalDispatcher } from 'undici';
 dotenv.config();
 
 export interface ServerConfig {
-  port: number;
-  host: string;
+  port: number; // Admin Web Management Port
+  host: string; // Admin Host
+  adminPort: number;
+  adminHost: string;
+  proxyPort: number; // API Reverse Proxy Port
+  proxyHost: string; // API Reverse Proxy Host
   adminPassword: string;
   jwtSecret: string;
   dataDir: string;
@@ -16,6 +20,7 @@ export interface ServerConfig {
   defaultModel: string;
   proxyUrl?: string;
   debug: boolean;
+  defaultUserAgent: string;
 }
 
 const defaultDataDir = path.resolve(process.cwd(), 'data');
@@ -42,9 +47,18 @@ export function setupGlobalProxy(customProxy?: string) {
 // Initialize on startup
 setupGlobalProxy();
 
+const adminPort = parseInt(process.env.ADMIN_PORT || process.env.PORT || '8080', 10);
+const adminHost = process.env.ADMIN_HOST || process.env.HOST || '0.0.0.0';
+const proxyPort = parseInt(process.env.PROXY_PORT || '8045', 10);
+const proxyHost = process.env.PROXY_HOST || '127.0.0.1';
+
 export const config: ServerConfig = {
-  port: parseInt(process.env.PORT || '8080', 10),
-  host: process.env.HOST || '0.0.0.0',
+  port: adminPort,
+  host: adminHost,
+  adminPort,
+  adminHost,
+  proxyPort,
+  proxyHost,
   adminPassword: process.env.ADMIN_PASSWORD || 'ant2api_admin',
   jwtSecret: process.env.JWT_SECRET || 'ant2api-secret-key-change-in-prod',
   dataDir: process.env.DATA_DIR || defaultDataDir,
@@ -52,4 +66,5 @@ export const config: ServerConfig = {
   defaultModel: process.env.DEFAULT_MODEL || 'gemini-2.5-pro',
   proxyUrl: envProxy,
   debug: process.env.DEBUG === 'true' || false,
+  defaultUserAgent: process.env.DEFAULT_USER_AGENT || 'antigravity/1.15.8 darwin/arm64'
 };

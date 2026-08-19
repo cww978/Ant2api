@@ -56,7 +56,7 @@ export interface ModelMappingItem {
 export interface RequestLogItem {
   id: string;
   timestamp: number;
-  protocol: 'openai' | 'claude' | 'gemini' | 'codex' | 'admin';
+  protocol: 'openai' | 'gemini' | 'codex' | 'admin';
   endpoint: string;
   model: string;
   mappedModel?: string;
@@ -73,6 +73,20 @@ export interface RequestLogItem {
   errorMessage?: string;
 }
 
+export interface ProxyServiceSettings {
+  port: number;
+  host: string;
+  allowLan: boolean;
+  timeoutSeconds: number;
+  autoStart: boolean;
+  authEnabled: boolean;
+  authMode: 'auto' | 'strict' | 'disabled';
+  masterApiKey: string;
+  adminPassword?: string;
+  userAgentOverride: boolean;
+  customUserAgent: string;
+}
+
 export interface SystemSettings {
   adminPasswordHash?: string;
   loadBalanceStrategy: 'round_robin' | 'least_errors' | 'random';
@@ -81,6 +95,7 @@ export interface SystemSettings {
   proxyUrl?: string;
   customSystemPrompt?: string;
   enableDebugLogs: boolean;
+  proxySettings?: ProxyServiceSettings;
 }
 
 export interface StorageData {
@@ -89,7 +104,22 @@ export interface StorageData {
   modelMappings: ModelMappingItem[];
   settings: SystemSettings;
   logs: RequestLogItem[];
+  proxySettings?: ProxyServiceSettings;
 }
+
+export const DEFAULT_PROXY_SETTINGS: ProxyServiceSettings = {
+  port: config.proxyPort || 8045,
+  host: config.proxyHost || '127.0.0.1',
+  allowLan: false,
+  timeoutSeconds: Math.floor(config.requestTimeoutMs / 1000) || 120,
+  autoStart: true,
+  authEnabled: true,
+  authMode: 'auto',
+  masterApiKey: 'sk-ant2api-default-master-key',
+  adminPassword: config.adminPassword || 'ant2api_admin',
+  userAgentOverride: true,
+  customUserAgent: config.defaultUserAgent || 'antigravity/1.15.8 darwin/arm64'
+};
 
 const DEFAULT_MODEL_MAPPINGS: ModelMappingItem[] = [
   // OpenAI alias mappings
@@ -99,12 +129,7 @@ const DEFAULT_MODEL_MAPPINGS: ModelMappingItem[] = [
   { id: '4', sourceModel: 'gpt-4', targetModel: 'gemini-3.1-pro', description: 'OpenAI GPT-4 -> Gemini 3.1 Pro', enabled: true },
   { id: '5', sourceModel: 'gpt-3.5-turbo', targetModel: 'gemini-3.5-flash', description: 'OpenAI GPT-3.5 Turbo -> Gemini 3.5 Flash', enabled: true },
   { id: '6', sourceModel: 'o1', targetModel: 'gemini-3.7-thinking', description: 'Reasoning -> Gemini 3.7 Thinking', enabled: true },
-  { id: '7', sourceModel: 'o3-mini', targetModel: 'gemini-3.7-thinking', description: 'Reasoning -> Gemini 3.7 Thinking', enabled: true },
-  // Claude alias mappings
-  { id: '8', sourceModel: 'claude-3-7-sonnet', targetModel: 'gemini-3.7-flash', description: 'Claude 3.7 Sonnet -> Gemini 3.7 Flash', enabled: true },
-  { id: '9', sourceModel: 'claude-3-5-sonnet-20241022', targetModel: 'gemini-3.7-flash', description: 'Claude 3.5 Sonnet -> Gemini 3.7 Flash', enabled: true },
-  { id: '10', sourceModel: 'claude-3-5-haiku-20241022', targetModel: 'gemini-3.5-flash', description: 'Claude 3.5 Haiku -> Gemini 3.5 Flash', enabled: true },
-  { id: '11', sourceModel: 'claude-3-opus-20240229', targetModel: 'gemini-3.1-pro', description: 'Claude 3 Opus -> Gemini 3.1 Pro', enabled: true }
+  { id: '7', sourceModel: 'o3-mini', targetModel: 'gemini-3.7-thinking', description: 'Reasoning -> Gemini 3.7 Thinking', enabled: true }
 ];
 
 export class StorageService {
@@ -140,7 +165,8 @@ export class StorageService {
             enablePublicRegistration: false,
             enableDebugLogs: config.debug
           },
-          logs: parsed.logs || []
+          logs: parsed.logs || [],
+          proxySettings: parsed.proxySettings || parsed.settings?.proxySettings || DEFAULT_PROXY_SETTINGS
         };
       }
     } catch (err) {
@@ -171,7 +197,8 @@ export class StorageService {
         enablePublicRegistration: false,
         enableDebugLogs: config.debug
       },
-      logs: []
+      logs: [],
+      proxySettings: DEFAULT_PROXY_SETTINGS
     };
     this.saveDataImmediate(initialData);
     return initialData;
@@ -290,6 +317,20 @@ export class StorageService {
     return this.data.settings;
   }
 
+  public getProxySettings(): ProxyServiceSettings {
+    if (!this.data.proxySettings) {
+      this.data.proxySettings = { ...DEFAULT_PROXY_SETTINGS };
+    }
+    return this.data.proxySettings;
+  }
+
+  public updateProxySettings(newSettings: Partial<ProxyServiceSettings>): ProxyServiceSettings {
+    const current = this.getProxySettings();
+    this.data.proxySettings = { ...current, ...newSettings };
+    this.scheduleSave();
+    return this.data.proxySettings;
+  }
+
   public addLog(log: RequestLogItem) {
     this.data.logs.unshift(log);
     // Keep at most 2000 recent logs in memory/disk
@@ -299,9 +340,36 @@ export class StorageService {
     this.scheduleSave();
   }
 
-  public getLogs(limit = 100, offset = 0): { logs: RequestLogItem[]; total: number } {
-    const total = this.data.logs.length;
-    const logs = this.data.logs.slice(offset, offset + limit);
+  public getLogs(
+    limit = 20,
+    offset = 0,
+    search?: string,
+    statusFilter?: string
+  ): { logs: RequestLogItem[]; total: number } {
+    let filtered = this.data.logs;
+
+    if (statusFilter === '200' || statusFilter === 'success') {
+      filtered = filtered.filter(l => l.statusCode === 200);
+    } else if (statusFilter === 'error') {
+      filtered = filtered.filter(l => l.statusCode !== 200);
+    }
+
+    if (search && search.trim().length > 0) {
+      const q = search.trim().toLowerCase();
+      filtered = filtered.filter(l =>
+        (l.model && l.model.toLowerCase().includes(q)) ||
+        (l.mappedModel && l.mappedModel.toLowerCase().includes(q)) ||
+        (l.endpoint && l.endpoint.toLowerCase().includes(q)) ||
+        (l.protocol && l.protocol.toLowerCase().includes(q)) ||
+        (l.clientIp && l.clientIp.toLowerCase().includes(q)) ||
+        (l.accountName && l.accountName.toLowerCase().includes(q)) ||
+        (l.apiKeyName && l.apiKeyName.toLowerCase().includes(q)) ||
+        String(l.statusCode).includes(q)
+      );
+    }
+
+    const total = filtered.length;
+    const logs = filtered.slice(offset, offset + limit);
     return { logs, total };
   }
 
