@@ -156,8 +156,22 @@ curl http://localhost:8045/v1/chat/completions \
 
 ### 2. ChatGPT Desktop / Codex 客户端接入
 
-- **接口端点**：`http://localhost:8045/v1/responses`
-- **API Key**：填入您的 API 密钥即可。
+在 Codex 配置文件（如 `~/.codex/config.toml` 或项目 `config.toml`）中添加以下自定义 Provider 配置：
+
+```toml
+model_provider = "custom"
+model = "gemini-3.7-flash"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "http://127.0.0.1:8045/v1"
+```
+
+> **鉴权方式**：客户端提示输入 API Key 时，填入服务配置中的 **API 主密钥（Master Key）** 或在 API 密钥页面生成的 **子密钥 (`sk-ant2api-...`)** 即可。
 
 ---
 

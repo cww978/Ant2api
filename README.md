@@ -153,10 +153,24 @@ curl http://localhost:8045/v1/chat/completions \
 
 ---
 
-### 2. ChatGPT Desktop / Codex Client
+### 2. Codex Client / ChatGPT CLI Integration
 
-- **API Endpoint**: `http://localhost:8045/v1/responses`
-- **API Key**: Master API Key or generated Sub-Key.
+For OpenAI Codex CLI or compatible client, add the following configuration to your `config.toml` (or `~/.codex/config.toml`):
+
+```toml
+model_provider = "custom"
+model = "gemini-3.7-flash"
+model_reasoning_effort = "high"
+disable_response_storage = true
+
+[model_providers.custom]
+name = "custom"
+wire_api = "responses"
+requires_openai_auth = true
+base_url = "http://127.0.0.1:8045/v1"
+```
+
+> **Authentication**: Provide your Master API Key (or generated Sub-Key `sk-ant2api-...`) when prompted by the client or set `OPENAI_API_KEY=sk-ant2api-...`.
 
 ---
 
