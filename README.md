@@ -24,7 +24,7 @@
 
 **Ant2api** is a high-performance, lightweight, and zero-friction AI API gateway.
 
-It transforms **Google Antigravity** (Google Cloud Code / Code Assist) and **GeminiCLI** sessions/credentials into standard **OpenAI (`/v1/chat/completions`)**, **Codex / ChatGPT Desktop (`/v1/responses`, `/v1/completions`)**, and **Gemini (`/v1beta/models`)** compatible endpoints. It features an intuitive React + Next.js Web Management Dashboard, dual-port separation, dynamic proxy lifecycle control, intelligent multi-account load balancing, and paginated audit logs.
+It transforms **Google Antigravity** (Google Cloud Code / Code Assist) and **GeminiCLI** sessions/credentials into standard **OpenAI (`/v1/chat/completions`)**, **Codex / ChatGPT Desktop (`/v1/responses`, `/v1/completions`)**, and **Gemini (`/v1beta/models`)** compatible endpoints. It features an intuitive modern Web Management Dashboard, dual-port separation, dynamic proxy lifecycle control, intelligent multi-account load balancing, and paginated audit logs.
 
 ---
 
@@ -35,7 +35,7 @@ It transforms **Google Antigravity** (Google Cloud Code / Code Assist) and **Gem
 │ 🎛️ Admin Web Console & Management API                       │
 │ 🌐 Web Dashboard:   http://localhost:8080 (Configurable)    │
 │ 🔑 Admin Password:  ant2api_admin                           │
-│ 📦 Includes: React Web UI + /api/admin/* Management APIs    │
+│ 📦 Includes: Web UI + /api/admin/* Management APIs          │
 └──────────────────────────────┬──────────────────────────────┘
                                │
                Dynamic Lifecycle / Hot Reload
@@ -67,7 +67,7 @@ It transforms **Google Antigravity** (Google Cloud Code / Code Assist) and **Gem
 - **Gemini Native**:
   - `/v1beta/models/*:generateContent` & `:streamGenerateContent`.
 
-### 🖥️ 2. React + Next.js Modern Web Console
+### 🖥️ 2. Modern Web Management Console
 - **⚙️ Service Configuration**:
   - Real-time proxy status indicator (🟢 Running / ⚪ Stopped / 🟡 Restarting).
   - Dynamic service actions: `[Start Service]`, `[Stop Service]`, `[Restart Service]`.
