@@ -259,6 +259,22 @@ router.post('/edits', apiKeyAuth, async (req: AuthenticatedRequest, res: Respons
   });
 });
 
+function extractPatchFromText(text: string): string | null {
+  if (!text || !text.includes('*** Begin Patch')) return null;
+  const match = text.match(/\*\*\* Begin Patch[\s\S]*?(?:\*\*\* End Patch|```|$)/);
+  if (match) {
+    let patch = match[0].trim();
+    if (patch.endsWith('```')) {
+      patch = patch.slice(0, -3).trim();
+    }
+    if (!patch.endsWith('*** End Patch') && !patch.includes('*** End Patch')) {
+      patch = `${patch}\n*** End Patch`;
+    }
+    return patch;
+  }
+  return null;
+}
+
 // POST /v1/responses (Codex Next-Gen Agent Responses API from Antigravity)
 router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Response) => {
   const start = Date.now();
@@ -352,6 +368,31 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
           completionTokens = geminiRes.usageMetadata.candidatesTokenCount || completionTokens;
         }
 
+        // Safety Net Fallback: If Gemini outputted a patch in text instead of tool call, convert it to apply_patch
+        if (functionCalls.length === 0 && fullText.includes('*** Begin Patch')) {
+          const fallbackPatch = extractPatchFromText(fullText);
+          if (fallbackPatch) {
+            if (messageItemStarted && !messageItemClosed) {
+              SseStreamHandler.closeCodexMessageItem(res, reqId, fullText, messageIndex);
+              messageItemClosed = true;
+            }
+            const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+            functionCalls.push({
+              id: callId,
+              name: 'apply_patch',
+              args: { patch: fallbackPatch }
+            });
+            const fcOutputIndex = currentOutputIndex++;
+            SseStreamHandler.writeCodexFunctionCall(
+              res,
+              callId,
+              fcOutputIndex,
+              'apply_patch',
+              { patch: fallbackPatch }
+            );
+          }
+        }
+
         const totalTokens = (promptTokens || 20) + (completionTokens || Math.ceil(fullText.length / 4));
         SseStreamHandler.endCodexResponsesStream(
           res,
@@ -407,6 +448,21 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
               arguments: typeof part.functionCall.args === 'string'
                 ? part.functionCall.args
                 : JSON.stringify(part.functionCall.args || {})
+            });
+          }
+        }
+
+        // Safety Net Fallback for non-streaming
+        if (outputItems.filter(i => i.type === 'function_call').length === 0 && text.includes('*** Begin Patch')) {
+          const fallbackPatch = extractPatchFromText(text);
+          if (fallbackPatch) {
+            const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
+            outputItems.push({
+              id: callId,
+              type: 'function_call',
+              name: 'apply_patch',
+              call_id: callId,
+              arguments: JSON.stringify({ patch: fallbackPatch })
             });
           }
         }
