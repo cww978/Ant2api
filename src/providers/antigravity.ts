@@ -1,6 +1,7 @@
 import { BaseProvider, GeminiGenerateRequest, GeminiGenerateResponse, GeminiStreamChunk } from './base.js';
 import { AccountItem, StorageService } from '../services/storage.js';
 import { GoogleOAuthService } from './google-oauth.js';
+import { ThoughtSignatureCache } from '../services/thought-signature-cache.js';
 
 const ANTIGRAVITY_ENDPOINTS = [
   'https://cloudcode-pa.googleapis.com/v1internal',
@@ -89,32 +90,29 @@ export class AntigravityProvider extends BaseProvider {
     return clean;
   }
 
-  private getCandidateModels(request: GeminiGenerateRequest): string[] {
-    const targetModel = this.resolveUpstreamModel(request.model);
-    let hasToolsHistory = false;
-    let hasThoughtSig = false;
-
-    for (const c of request.contents || []) {
-      for (const p of c.parts || []) {
-        if ((p as any).functionCall || (p as any).functionResponse) {
-          hasToolsHistory = true;
-        }
-        if ((p as any).thought_signature || (p as any).thoughtSignature) {
-          hasThoughtSig = true;
+  private ensureThoughtSignatures(contents?: any[]): any[] | undefined {
+    if (!contents || !Array.isArray(contents)) return contents;
+    for (const c of contents) {
+      if (c && Array.isArray(c.parts)) {
+        for (const p of c.parts) {
+          if (p && p.functionCall) {
+            if (!p.thought_signature && !p.thoughtSignature && !p.functionCall.thought_signature) {
+              const sig = ThoughtSignatureCache.get(undefined, p.functionCall.name);
+              p.thought_signature = sig;
+            }
+          }
         }
       }
     }
+    return contents;
+  }
 
+  private getCandidateModels(request: GeminiGenerateRequest): string[] {
+    const targetModel = this.resolveUpstreamModel(request.model);
     const models = [targetModel];
     if (!models.includes('gemini-2.5-pro')) models.push('gemini-2.5-pro');
     if (!models.includes('gemini-2.5-flash')) models.push('gemini-2.5-flash');
     if (!models.includes('gemini-3.5-flash-low')) models.push('gemini-3.5-flash-low');
-
-    if (hasToolsHistory && !hasThoughtSig) {
-      // Prioritize 2.5 models for unsigned tool calling history (2.5-pro and 2.5-flash never require thought_signature)
-      return ['gemini-2.5-pro', 'gemini-2.5-flash'];
-    }
-
     return models;
   }
 
@@ -139,6 +137,8 @@ export class AntigravityProvider extends BaseProvider {
       }
       return (await res.json()) as GeminiGenerateResponse;
     }
+
+    this.ensureThoughtSignatures(request.contents);
 
     let token = await this.getValidAccessToken();
     const projectId = await this.getCloudaicompanionProject(token);
@@ -227,6 +227,8 @@ export class AntigravityProvider extends BaseProvider {
 
       return this.parseStreamResponse(res, onChunk);
     }
+
+    this.ensureThoughtSignatures(request.contents);
 
     let token = await this.getValidAccessToken();
     const projectId = await this.getCloudaicompanionProject(token);
@@ -323,6 +325,14 @@ export class AntigravityProvider extends BaseProvider {
             onChunk(chunk);
             if (chunk.candidates) {
               fullResponse.candidates = chunk.candidates;
+              for (const cand of chunk.candidates) {
+                for (const p of cand.content?.parts || []) {
+                  const sig = (p as any).thought_signature || (p as any).thoughtSignature || (p.functionCall as any)?.thought_signature || (p.functionCall as any)?.thoughtSignature;
+                  if (sig) {
+                    ThoughtSignatureCache.save(undefined, p.functionCall?.name, sig);
+                  }
+                }
+              }
             }
             if (chunk.usageMetadata) {
               fullResponse.usageMetadata = chunk.usageMetadata;
