@@ -69,13 +69,19 @@ export class ToolsConverter {
         functionDeclarations.push({
           name: tool.function.name,
           description: tool.function.description || '',
-          parameters: ToolsConverter.sanitizeSchema(tool.function.parameters || { type: 'OBJECT', properties: {} })
+          parameters: ToolsConverter.sanitizeSchema(tool.function.parameters || tool.function.input_schema || { type: 'OBJECT', properties: {} })
+        });
+      } else if (tool.custom) {
+        functionDeclarations.push({
+          name: tool.custom.name || tool.name,
+          description: tool.custom.description || tool.description || '',
+          parameters: ToolsConverter.sanitizeSchema(tool.custom.parameters || tool.custom.input_schema || tool.custom.schema || { type: 'OBJECT', properties: {} })
         });
       } else if (tool.name) {
         functionDeclarations.push({
           name: tool.name,
           description: tool.description || '',
-          parameters: ToolsConverter.sanitizeSchema(tool.parameters || tool.input_schema || { type: 'OBJECT', properties: {} })
+          parameters: ToolsConverter.sanitizeSchema(tool.parameters || tool.input_schema || tool.schema || { type: 'OBJECT', properties: {} })
         });
       }
     }

@@ -254,10 +254,10 @@ export class SseStreamHandler {
   /**
    * Begins a text message output item when text starts arriving
    */
-  public static startCodexMessageItem(res: Response, id: string) {
+  public static startCodexMessageItem(res: Response, id: string, outputIndex = 0) {
     const itemAddedEvent = {
       type: 'response.output_item.added',
-      output_index: 0,
+      output_index: outputIndex,
       item: {
         id: `item_${id}`,
         type: 'message',
@@ -270,7 +270,7 @@ export class SseStreamHandler {
 
     const partAddedEvent = {
       type: 'response.content_part.added',
-      output_index: 0,
+      output_index: outputIndex,
       content_index: 0,
       part: {
         type: 'output_text',
@@ -283,15 +283,57 @@ export class SseStreamHandler {
   /**
    * Writes a Codex Responses text delta
    */
-  public static writeCodexResponsesDelta(res: Response, deltaText: string) {
+  public static writeCodexResponsesDelta(res: Response, deltaText: string, outputIndex = 0) {
     if (!deltaText) return;
     const deltaEvent = {
       type: 'response.output_text.delta',
-      output_index: 0,
+      output_index: outputIndex,
       content_index: 0,
       delta: deltaText
     };
     res.write(`event: response.output_text.delta\ndata: ${JSON.stringify(deltaEvent)}\n\n`);
+  }
+
+  /**
+   * Formally closes a text message item in the Codex Responses event stream
+   */
+  public static closeCodexMessageItem(res: Response, id: string, fullText: string, outputIndex = 0) {
+    const partDoneEvent = {
+      type: 'response.output_text.done',
+      output_index: outputIndex,
+      content_index: 0,
+      text: fullText
+    };
+    res.write(`event: response.output_text.done\ndata: ${JSON.stringify(partDoneEvent)}\n\n`);
+
+    const contentPartDoneEvent = {
+      type: 'response.content_part.done',
+      output_index: outputIndex,
+      content_index: 0,
+      part: {
+        type: 'output_text',
+        text: fullText
+      }
+    };
+    res.write(`event: response.content_part.done\ndata: ${JSON.stringify(contentPartDoneEvent)}\n\n`);
+
+    const itemDoneEvent = {
+      type: 'response.output_item.done',
+      output_index: outputIndex,
+      item: {
+        id: `item_${id}`,
+        type: 'message',
+        status: 'completed',
+        role: 'assistant',
+        content: [
+          {
+            type: 'output_text',
+            text: fullText
+          }
+        ]
+      }
+    };
+    res.write(`event: response.output_item.done\ndata: ${JSON.stringify(itemDoneEvent)}\n\n`);
   }
 
   /**
@@ -359,47 +401,16 @@ export class SseStreamHandler {
     fullText: string,
     functionCalls: Array<{ id: string; name: string; args: any }> = [],
     promptTokens = 0,
-    completionTokens = 0
+    completionTokens = 0,
+    messageClosed = false,
+    messageIndex = 0
   ) {
     const outputItems: any[] = [];
 
     if (fullText) {
-      const partDoneEvent = {
-        type: 'response.output_text.done',
-        output_index: 0,
-        content_index: 0,
-        text: fullText
-      };
-      res.write(`event: response.output_text.done\ndata: ${JSON.stringify(partDoneEvent)}\n\n`);
-
-      const contentPartDoneEvent = {
-        type: 'response.content_part.done',
-        output_index: 0,
-        content_index: 0,
-        part: {
-          type: 'output_text',
-          text: fullText
-        }
-      };
-      res.write(`event: response.content_part.done\ndata: ${JSON.stringify(contentPartDoneEvent)}\n\n`);
-
-      const itemDoneEvent = {
-        type: 'response.output_item.done',
-        output_index: 0,
-        item: {
-          id: `item_${id}`,
-          type: 'message',
-          status: 'completed',
-          role: 'assistant',
-          content: [
-            {
-              type: 'output_text',
-              text: fullText
-            }
-          ]
-        }
-      };
-      res.write(`event: response.output_item.done\ndata: ${JSON.stringify(itemDoneEvent)}\n\n`);
+      if (!messageClosed) {
+        SseStreamHandler.closeCodexMessageItem(res, id, fullText, messageIndex);
+      }
 
       outputItems.push({
         id: `item_${id}`,

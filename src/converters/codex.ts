@@ -175,12 +175,23 @@ export class CodexConverter {
    */
   public static responsesRequestToGemini(body: any, targetModel: string): GeminiGenerateRequest {
     const rawContents: GeminiContent[] = [];
-    let systemInstruction: any = undefined;
+    let systemInstruction: GeminiContent | undefined = undefined;
 
-    if (body.instructions) {
+    const hasTools = Boolean(body.tools && Array.isArray(body.tools) && body.tools.length > 0);
+    let baseInstructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
+
+    if (hasTools) {
+      const toolGuidance = `You are an expert AI software engineer and code assistant. You have access to tools for interacting with files and the workspace (such as apply_patch, edit_file, write_file, etc.). When asked to modify, create, edit, or patch code files, you MUST use the appropriate tool (such as apply_patch or edit_file) to apply changes directly. Do NOT output full replacement file contents or markdown code blocks into your conversational text when a tool is available. Always invoke tools to perform file edits so the IDE client can track modified files and diffs.`;
+      if (baseInstructions) {
+        baseInstructions = `${baseInstructions}\n\n${toolGuidance}`;
+      } else {
+        baseInstructions = toolGuidance;
+      }
+    }
+
+    if (baseInstructions) {
       systemInstruction = {
-        role: 'user',
-        parts: [{ text: `You are Antigravity Assistant.\n${body.instructions}` }]
+        parts: [{ text: baseInstructions }]
       };
     }
 

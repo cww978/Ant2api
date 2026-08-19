@@ -252,9 +252,11 @@ export class WebSocketHandlerService {
         let promptTokens = 0;
         let completionTokens = 0;
         let messageItemStarted = false;
+        let messageItemClosed = false;
+        let currentOutputIndex = 0;
+        const messageIndex = 0;
         const functionCalls: Array<{ id: string; name: string; args: any }> = [];
         const seenFunctionCalls = new Set<string>();
-        let callIdx = 0;
 
         const geminiRes = await provider.streamGenerate(geminiReq, (chunk) => {
           if (ws.readyState !== WebSocket.OPEN) return;
@@ -265,7 +267,7 @@ export class WebSocketHandlerService {
               if (!messageItemStarted) {
                 this.sendJson(ws, {
                   type: 'response.output_item.added',
-                  output_index: 0,
+                  output_index: messageIndex,
                   item: {
                     id: `item_${reqId}`,
                     type: 'message',
@@ -276,7 +278,7 @@ export class WebSocketHandlerService {
                 });
                 this.sendJson(ws, {
                   type: 'response.content_part.added',
-                  output_index: 0,
+                  output_index: messageIndex,
                   content_index: 0,
                   part: {
                     type: 'output_text',
@@ -284,11 +286,12 @@ export class WebSocketHandlerService {
                   }
                 });
                 messageItemStarted = true;
+                currentOutputIndex = 1;
               }
               fullText += part.text;
               this.sendJson(ws, {
                 type: 'response.output_text.delta',
-                output_index: 0,
+                output_index: messageIndex,
                 content_index: 0,
                 delta: part.text
               });
@@ -298,6 +301,38 @@ export class WebSocketHandlerService {
               const fcKey = `${part.functionCall.name}_${JSON.stringify(part.functionCall.args || {})}`;
               if (!seenFunctionCalls.has(fcKey)) {
                 seenFunctionCalls.add(fcKey);
+
+                // If text message was in progress, close it before opening the function call item
+                if (messageItemStarted && !messageItemClosed) {
+                  this.sendJson(ws, {
+                    type: 'response.output_text.done',
+                    output_index: messageIndex,
+                    content_index: 0,
+                    text: fullText
+                  });
+                  this.sendJson(ws, {
+                    type: 'response.content_part.done',
+                    output_index: messageIndex,
+                    content_index: 0,
+                    part: {
+                      type: 'output_text',
+                      text: fullText
+                    }
+                  });
+                  this.sendJson(ws, {
+                    type: 'response.output_item.done',
+                    output_index: messageIndex,
+                    item: {
+                      id: `item_${reqId}`,
+                      type: 'message',
+                      status: 'completed',
+                      role: 'assistant',
+                      content: [{ type: 'output_text', text: fullText }]
+                    }
+                  });
+                  messageItemClosed = true;
+                }
+
                 const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
                 const argsStr = JSON.stringify(part.functionCall.args || {});
 
@@ -307,7 +342,7 @@ export class WebSocketHandlerService {
                   args: part.functionCall.args || {}
                 });
 
-                const outIdx = messageItemStarted ? 1 + callIdx : callIdx;
+                const outIdx = currentOutputIndex++;
                 this.sendJson(ws, {
                   type: 'response.output_item.added',
                   output_index: outIdx,
@@ -342,7 +377,6 @@ export class WebSocketHandlerService {
                     arguments: argsStr
                   }
                 });
-                callIdx++;
               }
             }
           }
@@ -361,32 +395,34 @@ export class WebSocketHandlerService {
         // Finalize response
         const outputItems: any[] = [];
         if (fullText) {
-          this.sendJson(ws, {
-            type: 'response.output_text.done',
-            output_index: 0,
-            content_index: 0,
-            text: fullText
-          });
-          this.sendJson(ws, {
-            type: 'response.content_part.done',
-            output_index: 0,
-            content_index: 0,
-            part: {
-              type: 'output_text',
+          if (!messageItemClosed) {
+            this.sendJson(ws, {
+              type: 'response.output_text.done',
+              output_index: messageIndex,
+              content_index: 0,
               text: fullText
-            }
-          });
-          this.sendJson(ws, {
-            type: 'response.output_item.done',
-            output_index: 0,
-            item: {
-              id: `item_${reqId}`,
-              type: 'message',
-              status: 'completed',
-              role: 'assistant',
-              content: [{ type: 'output_text', text: fullText }]
-            }
-          });
+            });
+            this.sendJson(ws, {
+              type: 'response.content_part.done',
+              output_index: messageIndex,
+              content_index: 0,
+              part: {
+                type: 'output_text',
+                text: fullText
+              }
+            });
+            this.sendJson(ws, {
+              type: 'response.output_item.done',
+              output_index: messageIndex,
+              item: {
+                id: `item_${reqId}`,
+                type: 'message',
+                status: 'completed',
+                role: 'assistant',
+                content: [{ type: 'output_text', text: fullText }]
+              }
+            });
+          }
           outputItems.push({
             id: `item_${reqId}`,
             type: 'message',

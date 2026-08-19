@@ -289,25 +289,35 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
         let promptTokens = 0;
         let completionTokens = 0;
         let messageItemStarted = false;
+        let messageItemClosed = false;
+        let currentOutputIndex = 0;
+        const messageIndex = 0;
         const functionCalls: Array<{ id: string; name: string; args: any }> = [];
         const seenFunctionCalls = new Set<string>();
-        let callIdx = 0;
 
         const geminiRes = await provider.streamGenerate(geminiReq, (chunk) => {
           const parts = chunk.candidates?.[0]?.content?.parts || [];
           for (const part of parts) {
             if (part.text) {
               if (!messageItemStarted) {
-                SseStreamHandler.startCodexMessageItem(res, reqId);
+                SseStreamHandler.startCodexMessageItem(res, reqId, messageIndex);
                 messageItemStarted = true;
+                currentOutputIndex = 1;
               }
               fullText += part.text;
-              SseStreamHandler.writeCodexResponsesDelta(res, part.text);
+              SseStreamHandler.writeCodexResponsesDelta(res, part.text, messageIndex);
             }
             if (part.functionCall) {
               const fcKey = `${part.functionCall.name}_${JSON.stringify(part.functionCall.args || {})}`;
               if (!seenFunctionCalls.has(fcKey)) {
                 seenFunctionCalls.add(fcKey);
+
+                // If text message was in progress, close it before opening the function call item
+                if (messageItemStarted && !messageItemClosed) {
+                  SseStreamHandler.closeCodexMessageItem(res, reqId, fullText, messageIndex);
+                  messageItemClosed = true;
+                }
+
                 const callId = `call_${crypto.randomUUID().replace(/-/g, '').substring(0, 16)}`;
                 const sig = (part as any).thought_signature || (part as any).thoughtSignature || (part.functionCall as any)?.thought_signature || (part.functionCall as any)?.thoughtSignature;
                 if (sig) {
@@ -318,14 +328,15 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
                   name: part.functionCall.name,
                   args: part.functionCall.args || {}
                 });
+
+                const fcOutputIndex = currentOutputIndex++;
                 SseStreamHandler.writeCodexFunctionCall(
                   res,
                   callId,
-                  messageItemStarted ? 1 + callIdx : callIdx,
+                  fcOutputIndex,
                   part.functionCall.name,
                   part.functionCall.args || {}
                 );
-                callIdx++;
               }
             }
           }
@@ -349,7 +360,9 @@ router.post('/responses', apiKeyAuth, async (req: AuthenticatedRequest, res: Res
           fullText,
           functionCalls,
           promptTokens,
-          completionTokens
+          completionTokens,
+          messageItemClosed,
+          messageIndex
         );
 
         const latencyMs = Date.now() - start;
