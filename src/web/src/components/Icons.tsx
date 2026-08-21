@@ -25,7 +25,9 @@ import {
   Globe,
   Sliders,
   LogOut,
-  X
+  X,
+  Sun,
+  Moon
 } from 'lucide-react';
 
 const GithubIcon: React.FC<{ size?: number; className?: string; color?: string }> = ({
@@ -77,5 +79,7 @@ export const Icons = {
   Sliders,
   LogOut,
   X,
-  Github: GithubIcon
+  Github: GithubIcon,
+  Sun,
+  Moon
 };

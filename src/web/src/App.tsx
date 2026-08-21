@@ -22,6 +22,21 @@ import { SettingsView } from './views/SettingsView';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('ant2api_theme');
+    if (saved === 'dark' || saved === 'light') return saved;
+    return 'light'; // 默认白天模式
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('ant2api_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     return Boolean(localStorage.getItem('ant2api_auth_token'));
   });
@@ -148,7 +163,7 @@ export const App: React.FC = () => {
     return (
       <>
         <div className="app-background-glow" />
-        <LoginView onLogin={handleLogin} />
+        <LoginView onLogin={handleLogin} theme={theme} onToggleTheme={toggleTheme} />
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </>
     );
@@ -183,7 +198,7 @@ export const App: React.FC = () => {
             className={`nav-tab-btn ${activeTab === 'overview' ? 'active' : ''}`}
             onClick={() => setActiveTab('overview')}
           >
-            <Icons.Activity size={16} /> 概览
+            <Icons.Activity size={16} /> 系统概览
           </button>
           <button
             className={`nav-tab-btn ${activeTab === 'service' ? 'active' : ''}`}
@@ -200,12 +215,11 @@ export const App: React.FC = () => {
               <span
                 style={{
                   fontSize: '0.7rem',
-                  fontWeight: 700,
                   padding: '1px 6px',
                   borderRadius: 10,
-                  background: 'rgba(255,255,255,0.18)',
-                  marginLeft: 3,
-                  fontFamily: 'var(--font-mono)',
+                  background: activeTab === 'accounts' ? 'rgba(255,255,255,0.3)' : 'rgba(168,85,247,0.18)',
+                  marginLeft: 4,
+                  fontWeight: 700
                 }}
               >
                 {accounts.length}
@@ -222,7 +236,7 @@ export const App: React.FC = () => {
             className={`nav-tab-btn ${activeTab === 'mappings' ? 'active' : ''}`}
             onClick={() => setActiveTab('mappings')}
           >
-            <Icons.Shuffle size={16} /> 模型路由
+            <Icons.Shuffle size={16} /> 模型重定向
           </button>
           <button
             className={`nav-tab-btn ${activeTab === 'logs' ? 'active' : ''}`}
@@ -246,6 +260,14 @@ export const App: React.FC = () => {
               ({config?.allowLanAccess ? '0.0.0.0' : '127.0.0.1'}:{config?.port || 8045})
             </span>
           </div>
+
+          <button
+            className="theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'light' ? '切换至黑暗模式 (Night)' : '切换至白天模式 (Day)'}
+          >
+            {theme === 'light' ? <Icons.Moon size={16} /> : <Icons.Sun size={16} />}
+          </button>
 
           <button
             className="btn btn-secondary btn-sm"

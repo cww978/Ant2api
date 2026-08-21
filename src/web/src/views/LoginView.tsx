@@ -3,9 +3,11 @@ import { Icons } from '../components/Icons';
 
 interface LoginViewProps {
   onLogin: (password: string) => Promise<boolean>;
+  theme?: 'light' | 'dark';
+  onToggleTheme?: () => void;
 }
 
-export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
+export const LoginView: React.FC<LoginViewProps> = ({ onLogin, theme = 'light', onToggleTheme }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,6 +46,18 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         overflow: 'hidden',
       }}
     >
+      {/* Top right theme toggle */}
+      {onToggleTheme && (
+        <div style={{ position: 'absolute', top: 20, right: 24, zIndex: 50 }}>
+          <button
+            className="theme-toggle-btn"
+            onClick={onToggleTheme}
+            title={theme === 'light' ? '切换至黑暗模式 (Night)' : '切换至白天模式 (Day)'}
+          >
+            {theme === 'light' ? <Icons.Moon size={16} /> : <Icons.Sun size={16} />}
+          </button>
+        </div>
+      )}
       {/* Ambient background lighting */}
       <div
         style={{
@@ -53,7 +67,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           transform: 'translate(-50%, -50%)',
           width: 500,
           height: 500,
-          background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.08) 40%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(59, 130, 246, 0.18) 0%, rgba(139, 92, 246, 0.12) 40%, transparent 70%)',
           filter: 'blur(40px)',
           pointerEvents: 'none',
         }}
@@ -65,7 +79,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           right: '15%',
           width: 350,
           height: 350,
-          background: 'radial-gradient(circle, rgba(6, 182, 212, 0.1) 0%, transparent 65%)',
+          background: 'radial-gradient(circle, rgba(6, 182, 212, 0.14) 0%, transparent 65%)',
           filter: 'blur(50px)',
           pointerEvents: 'none',
         }}
@@ -77,9 +91,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           width: '100%',
           maxWidth: 420,
           padding: '36px 32px',
-          borderRadius: 20,
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(99, 102, 241, 0.15)',
+          borderRadius: 22,
+          border: '1px solid var(--border-medium)',
+          boxShadow: 'var(--shadow-lg)',
           textAlign: 'center',
           position: 'relative',
           zIndex: 10,
@@ -93,13 +107,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               width: 56,
               height: 56,
               borderRadius: 16,
-              background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+              background: 'linear-gradient(135deg, #06b6d4 0%, #3b82f6 45%, #8b5cf6 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '1.8rem',
               color: '#fff',
-              boxShadow: '0 8px 24px rgba(99, 102, 241, 0.45)',
+              boxShadow: '0 8px 24px rgba(59, 130, 246, 0.45)',
             }}
           >
             ⚡
@@ -112,7 +126,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             fontWeight: 800,
             letterSpacing: '-0.02em',
             marginBottom: 6,
-            background: 'linear-gradient(90deg, #ffffff 0%, #cbd5e1 100%)',
+            background: 'var(--gradient-title)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
           }}
@@ -139,13 +153,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
             </label>
             <input
               type="password"
-              className="text-input"
+              className="text-input font-mono"
               style={{
                 height: 46,
                 fontSize: '0.95rem',
                 borderRadius: 12,
-                background: 'rgba(10, 15, 29, 0.9)',
-                border: '1px solid rgba(255, 255, 255, 0.12)',
               }}
               placeholder="默认密码: ant2api_admin"
               value={password}
@@ -183,7 +195,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
               fontSize: '0.95rem',
               fontWeight: 700,
               borderRadius: 12,
-              boxShadow: '0 4px 16px rgba(37, 99, 235, 0.4)',
               cursor: loading ? 'not-allowed' : 'pointer',
             }}
             disabled={loading}
