@@ -15,8 +15,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
 }) => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const proxyPort = config?.port || 8045;
-  const isRunning = config?.proxyStatus?.running ?? false;
+  const proxyPort = config?.port || config?.activePort || 8045;
+  const isRunning = config?.status === 'running' || config?.proxyStatus?.running || false;
   const host = window.location.hostname || 'localhost';
 
   const copyToClipboard = (text: string, key: string) => {

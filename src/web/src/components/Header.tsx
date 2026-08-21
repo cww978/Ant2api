@@ -17,7 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   isRefreshing,
   onLogout,
 }) => {
-  const isRunning = config?.proxyStatus?.running ?? false;
+  const isRunning = config?.status === 'running' || config?.proxyStatus?.running || false;
 
   return (
     <header className="app-header">

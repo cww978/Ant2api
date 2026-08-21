@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { adminAuth, AuthenticatedRequest } from '../middleware/auth.js';
-import { StorageService, AccountItem, ApiKeyItem, ModelMappingItem } from '../services/storage.js';
+import { StorageService, AccountItem, ApiKeyItem, ModelMappingItem, ProxyServiceSettings } from '../services/storage.js';
 import { StatsLoggerService } from '../services/stats-logger.js';
 import { GoogleOAuthService, DEFAULT_OAUTH_CLIENT_ID, DEFAULT_OAUTH_CLIENT_SECRET } from '../providers/google-oauth.js';
 import { AccountPoolService } from '../services/account-pool.js';
@@ -277,20 +277,38 @@ router.post('/proxy/restart', adminAuth, async (req: Request, res: Response) => 
 router.get('/proxy/config', adminAuth, (req: Request, res: Response) => {
   const proxyService = ProxyLifecycleService.getInstance();
   const settings = storage.getProxySettings();
+  const statusInfo = proxyService.getStatus();
   return res.json({
     success: true,
     data: {
       ...settings,
-      status: proxyService.getStatus().status,
-      activePort: proxyService.getStatus().port,
-      uptime: proxyService.getStatus().uptime
+      port: statusInfo.port || settings.port,
+      proxyTimeout: settings.timeoutSeconds,
+      masterKey: settings.masterApiKey,
+      uiPassword: settings.adminPassword,
+      allowLanAccess: settings.allowLan,
+      status: statusInfo.status,
+      activePort: statusInfo.port,
+      uptime: statusInfo.uptime,
+      proxyStatus: {
+        running: statusInfo.status === 'running',
+        uptimeSeconds: statusInfo.uptime,
+        error: statusInfo.error
+      }
     }
   });
 });
 
 router.post('/proxy/config', adminAuth, async (req: Request, res: Response) => {
   const body = req.body;
-  const updated = storage.updateProxySettings(body);
+  const toUpdate: Partial<ProxyServiceSettings> = {
+    ...body,
+    timeoutSeconds: body.proxyTimeout !== undefined ? body.proxyTimeout : body.timeoutSeconds,
+    masterApiKey: body.masterKey !== undefined ? body.masterKey : body.masterApiKey,
+    adminPassword: body.uiPassword !== undefined ? body.uiPassword : body.adminPassword,
+    allowLan: body.allowLanAccess !== undefined ? body.allowLanAccess : body.allowLan,
+  };
+  const updated = storage.updateProxySettings(toUpdate);
   const restart = Boolean(body.restart);
   if (restart) {
     try {

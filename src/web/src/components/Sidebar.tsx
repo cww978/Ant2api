@@ -15,7 +15,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   config,
   accountsCount,
 }) => {
-  const isRunning = config?.proxyStatus?.running ?? false;
+  const isRunning = config?.status === 'running' || config?.proxyStatus?.running || false;
 
   const navItems: { id: ActiveTab; label: string; icon: React.ReactNode; badge?: string | number }[] = [
     { id: 'overview', label: '系统概览', icon: <Icons.Activity size={18} /> },

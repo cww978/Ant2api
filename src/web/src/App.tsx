@@ -162,10 +162,20 @@ export const App: React.FC = () => {
       <header className="app-header">
         <div className="brand-section">
           <div className="brand-logo-icon">⚡</div>
-          <div>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
             <span className="brand-title">Ant2api</span>
             <span className="brand-subtitle">v1.0.0</span>
           </div>
+          <a
+            href="https://github.com/cww978/Ant2api"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="brand-github-link"
+            title="访问 GitHub 开源仓库"
+          >
+            <Icons.Github size={14} />
+            <span>GitHub</span>
+          </a>
         </div>
 
         <nav className="nav-tabs">
