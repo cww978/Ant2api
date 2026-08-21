@@ -29,7 +29,7 @@ export const Modal: React.FC<ModalProps> = ({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className="modal-container glass-card"
+        className="modal-container"
         style={{ maxWidth }}
         onClick={(e) => e.stopPropagation()}
       >

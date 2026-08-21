@@ -35,7 +35,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLogin }) => {
 
   return (
     <div className="modal-backdrop" style={{ zIndex: 9999 }}>
-      <div className="modal-container glass-card" style={{ maxWidth: 400, textAlign: 'center' }}>
+      <div className="modal-container" style={{ maxWidth: 400, textAlign: 'center' }}>
         <div style={{ fontSize: '2.5rem', marginBottom: 12 }}>⚡</div>
         <h2 style={{ fontSize: '1.4rem', fontWeight: 700, marginBottom: 6 }}>Ant2api 控制台</h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: 24 }}>
