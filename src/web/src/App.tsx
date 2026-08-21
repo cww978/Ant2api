@@ -189,11 +189,13 @@ export const App: React.FC = () => {
             {accounts.length > 0 && (
               <span
                 style={{
-                  fontSize: '0.72rem',
+                  fontSize: '0.7rem',
+                  fontWeight: 700,
                   padding: '1px 6px',
                   borderRadius: 10,
-                  background: 'rgba(255,255,255,0.15)',
-                  marginLeft: 2,
+                  background: 'rgba(255,255,255,0.18)',
+                  marginLeft: 3,
+                  fontFamily: 'var(--font-mono)',
                 }}
               >
                 {accounts.length}
